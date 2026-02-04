@@ -6,13 +6,23 @@ import hashlib
 
 from ..models import Link, Visit
 from ..extensions import db, limiter
-from ..utils import get_geo_data, is_bot_ua, verify_turnstile, parse_referrer
+from ..utils import get_geo_data, is_bot_ua, verify_turnstile, parse_referrer, sign_visit_token
 from ..config import Config
+from ..validators import get_client_ip, normalize_destination_url
 
 bp = Blueprint('public', __name__)
 
 LINK_CACHE = {}
 CACHE_TTL = 60
+
+
+def _safe_url_or_none(url: str):
+    if not url:
+        return None
+    try:
+        return normalize_destination_url(url)
+    except Exception:
+        return None
 
 @bp.route('/<slug>', methods=['GET'])
 def redirect_to_url(slug):
@@ -24,14 +34,14 @@ def redirect_to_url(slug):
     
     if not link:
         # PROTECT RESERVED ROUTES from being caught as slugs
-        if slug in ['dashboard', 'login', 'logout', 'api', 'static']:
+        if slug.lower() in Config.RESERVED_SLUGS:
             abort(404)
             
         link = Link.query.filter_by(slug=slug).first_or_404()
         LINK_CACHE[slug] = {'link': link, 'timestamp': datetime.utcnow().timestamp()}
 
     # Log Visit
-    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    client_ip = get_client_ip(request, Config.TRUST_PROXY_HEADERS)
     ua_string = request.user_agent.string
     user_agent = parse(ua_string)
     
@@ -79,6 +89,8 @@ def redirect_to_url(slug):
             log_queue.put({'type': 'enrich_visit', 'visit_id': visit.id, 'ip': client_ip})
         except:
             pass
+
+    visit_token = sign_visit_token(visit.id) if visit.id != "error_fallback" else None
     
     # === LOGIC IMPLEMENTATION (V41) ===
     
@@ -123,19 +135,24 @@ def redirect_to_url(slug):
             return render_template('error.html', message="Access Denied from your location", visit_id=visit.id, hide_nav=True), 403
 
     # Checks
-    final_dest = link.destination
-    if not (final_dest.startswith("http://") or final_dest.startswith("https://")):
-        final_dest = "https://" + final_dest
+    try:
+        final_dest = normalize_destination_url(link.destination)
+    except Exception:
+        return render_template('error.html', message="Invalid destination URL", hide_nav=True), 400
         
     # 3. Mobile Targeting
     if user_agent.is_mobile or user_agent.is_tablet:
         if user_agent.os.family == 'iOS' and link.ios_url:
-            final_dest = link.ios_url
-            if not (final_dest.startswith("http://") or final_dest.startswith("https://")): final_dest = "https://" + final_dest
+            try:
+                final_dest = normalize_destination_url(link.ios_url)
+            except Exception:
+                return render_template('error.html', message="Invalid iOS destination URL", hide_nav=True), 400
             
         elif user_agent.os.family == 'Android' and link.android_url:
-            final_dest = link.android_url
-            if not (final_dest.startswith("http://") or final_dest.startswith("https://")): final_dest = "https://" + final_dest
+            try:
+                final_dest = normalize_destination_url(link.android_url)
+            except Exception:
+                return render_template('error.html', message="Invalid Android destination URL", hide_nav=True), 400
     
     # === LIMITS CHECK (V40) ===
     # 1. Expiration
@@ -178,15 +195,16 @@ def redirect_to_url(slug):
     
     # Check Malicious IP Blocklist
     from ..utils import is_malicious_ip
-    is_malicious = is_malicious_ip(ip)
+    is_malicious = is_malicious_ip(client_ip)
     if is_malicious:
         is_vpn_or_cloud = True
         visit.is_suspicious = True
         visit.notes = "Malicious IP Detected"
         # ALWAYS block malicious IPs regardless of link settings
         db.session.commit()
-        if link.safe_url:
-            final_dest = link.safe_url
+        safe_dest = _safe_url_or_none(link.safe_url)
+        if safe_dest:
+            final_dest = safe_dest
         else:
             return render_template('error.html', message="Access Denied (IP Reputation)", visit_id=visit.id, hide_nav=True), 403
     
@@ -196,8 +214,9 @@ def redirect_to_url(slug):
         visit.is_vpn = True
         visit.notes = visit.notes or "Blocked: VPN/Cloud Detected"
         db.session.commit()
-        if link.safe_url:
-            final_dest = link.safe_url
+        safe_dest = _safe_url_or_none(link.safe_url)
+        if safe_dest:
+            final_dest = safe_dest
         else:
             return render_template('error.html', message="Anonymizer/VPN/Cloud IP Detected", visit_id=visit.id, hide_nav=True), 403
     
@@ -206,8 +225,9 @@ def redirect_to_url(slug):
         visit.is_suspicious = True
         visit.notes = "Blocked: Bot Detected"
         db.session.commit()
-        if link.safe_url:
-            final_dest = link.safe_url
+        safe_dest = _safe_url_or_none(link.safe_url)
+        if safe_dest:
+            final_dest = safe_dest
         else:
             return render_template('error.html', message="Suspicious Traffic", visit_id=visit.id, hide_nav=True), 403
     
@@ -216,20 +236,42 @@ def redirect_to_url(slug):
         captcha_cookie = request.cookies.get(f'auth_captcha_{link.slug}')
         expected_hash = hashlib.sha256(f"captcha_ok_{link.slug}{Config.SECRET_KEY}".encode()).hexdigest()
         if captcha_cookie != expected_hash:
-            return render_template('captcha.html', slug=link.slug, visit_id=visit.id, site_key=Config.TURNSTILE_SITE_KEY, hide_nav=True)
+            return render_template(
+                'captcha.html',
+                slug=link.slug,
+                visit_id=visit.id,
+                visit_token=visit_token,
+                site_key=Config.TURNSTILE_SITE_KEY,
+                hide_nav=True
+            )
     
     # 3. Password Check
     if link.password_hash:
         auth_cookie = request.cookies.get(f'auth_pwd_{link.slug}')
         expected_hash = hashlib.sha256(f"{link.password_hash}{Config.SECRET_KEY}".encode()).hexdigest()
         if auth_cookie != expected_hash:
-            return render_template('password.html', slug=link.slug, visit_id=visit.id, site_key=Config.TURNSTILE_SITE_KEY, hide_nav=True)
+            return render_template(
+                'password.html',
+                slug=link.slug,
+                visit_id=visit.id,
+                visit_token=visit_token,
+                site_key=Config.TURNSTILE_SITE_KEY,
+                hide_nav=True
+            )
     
     # 4. Email Gate Check
     if link.require_email:
         verified_cookie = request.cookies.get(f'verified_{link.slug}')
         if not verified_cookie:
-            return render_template('email_gate.html', slug=link.slug, visit_id=visit.id, site_key=Config.TURNSTILE_SITE_KEY, hide_nav=True)
+            return render_template(
+                'email_gate.html',
+                slug=link.slug,
+                visit_id=visit.id,
+                visit_token=visit_token,
+                site_key=Config.TURNSTILE_SITE_KEY,
+                allow_partial_email_capture=Config.ALLOW_PARTIAL_EMAIL_CAPTURE,
+                hide_nav=True
+            )
 
     # V38 AI Architect Custom Rendering
     if link.custom_html:
@@ -257,10 +299,17 @@ def redirect_to_url(slug):
         # Security: Use Jinja2 Sandbox to prevent SSTI
         sandbox = SandboxedEnvironment()
         template = sandbox.from_string(html_content)
-        return template.render(destination=final_dest, visit_id=visit.id)
+        return template.render(destination=final_dest, visit_id=visit.id, visit_token=visit_token)
 
     # Success
-    resp = make_response(render_template('loading.html', destination=final_dest, visit_id=visit.id, allow_no_js=link.allow_no_js, hide_nav=True))
+    resp = make_response(render_template(
+        'loading.html',
+        destination=final_dest,
+        visit_id=visit.id,
+        visit_token=visit_token,
+        allow_no_js=link.allow_no_js,
+        hide_nav=True
+    ))
     
     # 3. SET THE TRAP (Send ETag back to browser)
     resp.headers['ETag'] = client_etag
@@ -274,7 +323,7 @@ def verify_captcha():
     slug = request.form.get('slug')
     turnstile_token = request.form.get('cf-turnstile-response')
     visit_id = request.form.get('visit_id')
-    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    client_ip = get_client_ip(request, Config.TRUST_PROXY_HEADERS)
     
     link = Link.query.filter_by(slug=slug).first_or_404()
     
@@ -284,7 +333,8 @@ def verify_captcha():
         resp.set_cookie(f"auth_captcha_{slug}", auth_hash, max_age=3600, httponly=True, secure=True, samesite='Lax')
         return resp
     else:
-        return render_template('captcha.html', slug=slug, visit_id=visit_id, 
+        return render_template('captcha.html', slug=slug, visit_id=visit_id,
+                               visit_token=sign_visit_token(visit_id),
                                site_key=Config.TURNSTILE_SITE_KEY, error="Verification Failed", hide_nav=True), 400
 
 @bp.route('/verify_password', methods=['POST'])
@@ -294,13 +344,14 @@ def verify_password():
     password = request.form.get('password')
     turnstile_token = request.form.get('cf-turnstile-response')
     visit_id = request.form.get('visit_id')
-    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    client_ip = get_client_ip(request, Config.TRUST_PROXY_HEADERS)
     
     link = Link.query.filter_by(slug=slug).first_or_404()
     
     # Verify Turnstile
     if not verify_turnstile(turnstile_token, client_ip):
         return render_template('password.html', slug=slug, visit_id=visit_id,
+                               visit_token=sign_visit_token(visit_id),
                                site_key=Config.TURNSTILE_SITE_KEY, error="Captcha Failed", hide_nav=True), 400
     
     # Verify Password
@@ -312,13 +363,17 @@ def verify_password():
         return resp
     else:
         return render_template('password.html', slug=slug, visit_id=visit_id,
+                               visit_token=sign_visit_token(visit_id),
                                site_key=Config.TURNSTILE_SITE_KEY, error="Invalid Password", hide_nav=True), 401
 
 @bp.route('/verify_email', methods=['POST'])
+@limiter.limit("5 per minute")
 def verify_email():
     slug = request.form.get('slug')
     visit_id = request.form.get('visit_id')
     email = request.form.get('email')
+    turnstile_token = request.form.get('cf-turnstile-response')
+    client_ip = get_client_ip(request, Config.TRUST_PROXY_HEADERS)
     
     # 1. Basic Validation
     if not slug or not email:
@@ -326,6 +381,15 @@ def verify_email():
         
     link = Link.query.filter_by(slug=slug).first_or_404()
     visit = Visit.query.get(visit_id)
+
+    # Optional Turnstile check (if configured)
+    if Config.TURNSTILE_SECRET_KEY:
+        if not verify_turnstile(turnstile_token, client_ip):
+            return render_template('email_gate.html', 
+                                 slug=slug, visit_id=visit_id, site_key=Config.TURNSTILE_SITE_KEY,
+                                 visit_token=sign_visit_token(visit_id),
+                                 allow_partial_email_capture=Config.ALLOW_PARTIAL_EMAIL_CAPTURE,
+                                 error="Captcha Failed")
     
     # 2. Email Policy Enforcement (V23)
     from ..utils import is_disposable_email, is_privacy_email, validate_email_strict
@@ -333,8 +397,10 @@ def verify_email():
     # SENIOR VALIDATION: Gibberish & Strict Syntax
     is_valid_strict, strict_reason = validate_email_strict(email)
     if not is_valid_strict:
-         return render_template('email_gate.html', 
+            return render_template('email_gate.html', 
                                  slug=slug, visit_id=visit_id, site_key=Config.TURNSTILE_SITE_KEY,
+                                 visit_token=sign_visit_token(visit_id),
+                                 allow_partial_email_capture=Config.ALLOW_PARTIAL_EMAIL_CAPTURE,
                                  error=strict_reason)
     
     # Policy: Certified Only (Block Temp)
@@ -342,6 +408,8 @@ def verify_email():
         if is_disposable_email(email):
             return render_template('email_gate.html', 
                                  slug=slug, visit_id=visit_id, site_key=Config.TURNSTILE_SITE_KEY,
+                                 visit_token=sign_visit_token(visit_id),
+                                 allow_partial_email_capture=Config.ALLOW_PARTIAL_EMAIL_CAPTURE,
                                  error="Ephemeral/Temporary emails are not accepted. Please use a standard provider.")
 
     # Policy: Trackable Only (Block Temp + Privacy)
@@ -351,6 +419,8 @@ def verify_email():
             error_msg = "Private/Anonymous email providers are restricted. Please use a standard ISP or Corporate email."
             return render_template('email_gate.html', 
                                  slug=slug, visit_id=visit_id, site_key=Config.TURNSTILE_SITE_KEY,
+                                 visit_token=sign_visit_token(visit_id),
+                                 allow_partial_email_capture=Config.ALLOW_PARTIAL_EMAIL_CAPTURE,
                                  error=error_msg)
 
     # 3. Save Email and Create Lead
@@ -370,14 +440,16 @@ def verify_email():
     
     # 4. Success -> Redirect to Loading
     # Checks
-    final_dest = link.destination
-    if not (final_dest.startswith("http://") or final_dest.startswith("https://")):
-        final_dest = "https://" + final_dest
-    if link.safe_url: final_dest = link.safe_url
+    try:
+        final_dest = normalize_destination_url(link.destination)
+    except Exception:
+        return render_template('error.html', message="Invalid destination URL", hide_nav=True), 400
         
+    visit_token = sign_visit_token(visit.id) if visit else None
     return render_template('loading.html', 
                            destination=final_dest, 
                            visit_id=visit_id, 
+                           visit_token=visit_token,
                            allow_no_js=link.allow_no_js, 
                            block_adblock=link.block_adblock,
                            hide_nav=True)

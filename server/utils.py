@@ -5,6 +5,7 @@ import os
 import math
 from typing import Tuple, Optional, Dict, List, Set, Any
 from functools import lru_cache
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from .config import Config
 
 # Global session for connection pooling (Speed boost)
@@ -278,3 +279,25 @@ def update_env_file(updates: Dict[str, str]):
             
     with open(env_path, 'w') as f:
         f.writelines(new_lines)
+
+
+def _visit_token_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(Config.SECRET_KEY, salt='visit-token')
+
+
+def sign_visit_token(visit_id: Any) -> Optional[str]:
+    try:
+        return _visit_token_serializer().dumps({'v': int(visit_id)})
+    except Exception:
+        return None
+
+
+def verify_visit_token(token: Optional[str], max_age: int) -> Optional[int]:
+    if not token:
+        return None
+    try:
+        data = _visit_token_serializer().loads(token, max_age=max_age)
+        value = data.get('v')
+        return int(value) if value is not None else None
+    except (BadSignature, SignatureExpired, ValueError, TypeError):
+        return None

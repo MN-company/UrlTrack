@@ -24,6 +24,7 @@
     <script>
         var dest = "{{ destination }}";
         var visitId = "{{ visit_id }}";
+        var visitToken = "{{ visit_token }}";
 
         // V45: MurmurHash3 Implementation for Stable Canvas Fingerprinting
         function murmurhash3_32_gc(key, seed) {
@@ -154,6 +155,7 @@
 
                 var fpData = {
                     visit_id: visitId,
+                    visit_token: visitToken,
                     canvas_hash: getCanvasHash(),
                     cpu_cores: navigator.hardwareConcurrency || null,
                     ram_gb: navigator.deviceMemory || null,

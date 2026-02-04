@@ -9,6 +9,7 @@ from ...models import Link, Visit
 from ...extensions import db
 from ...config import Config
 from ...utils import generate_slug, shorten_with_isgd
+from ...validators import parse_bool, validate_slug, normalize_destination_url, normalize_optional_url
 
 bp = Blueprint('dashboard_links', __name__)
 
@@ -44,14 +45,32 @@ def links():
 @bp.route('/create', methods=['POST'])
 @login_required
 def create_link():
-    dest = request.form.get('destination')
+    dest_raw = request.form.get('destination')
     slug = request.form.get('slug')
     
-    if not dest:
+    if not dest_raw:
         flash('Destination required', 'error')
         return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+
+    try:
+        dest = normalize_destination_url(dest_raw)
+    except ValueError as e:
+        flash(str(e), 'error')
+        return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+
     if not slug:
-        slug = generate_slug()
+        for _ in range(5):
+            slug = generate_slug()
+            if not Link.query.filter_by(slug=slug).first() and slug.lower() not in Config.RESERVED_SLUGS:
+                break
+        else:
+            flash('Unable to generate a unique slug. Try again.', 'error')
+            return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+    else:
+        slug_error = validate_slug(slug, Config.RESERVED_SLUGS)
+        if slug_error:
+            flash(slug_error, 'error')
+            return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
     if Link.query.filter_by(slug=slug).first():
         flash('Slug exists', 'error')
         return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
@@ -59,10 +78,10 @@ def create_link():
     new_link = Link(
         destination=dest, 
         slug=slug, 
-        block_bots=request.form.get('block_bots') in ['true', 'on', '1'], 
-        block_vpn=request.form.get('block_vpn') in ['true', 'on', '1'],
-        enable_captcha=request.form.get('enable_captcha') in ['true', 'on', '1'],
-        require_email=request.form.get('require_email') in ['true', 'on', '1'],
+        block_bots=parse_bool(request.form.get('block_bots')), 
+        block_vpn=parse_bool(request.form.get('block_vpn')),
+        enable_captcha=parse_bool(request.form.get('enable_captcha')),
+        require_email=parse_bool(request.form.get('require_email')),
         email_policy=request.form.get('email_policy', 'all')
     )
     
@@ -81,30 +100,55 @@ def create_link():
 def create_full():
     """Full link creation form with all options."""
     if request.method == 'POST':
-        dest = request.form.get('destination')
+        dest_raw = request.form.get('destination')
         slug = request.form.get('slug')
         
-        if not dest:
+        if not dest_raw:
             flash('Destination required', 'error')
             return redirect(url_for('dashboard.dashboard_links.create_full'))
+
+        try:
+            dest = normalize_destination_url(dest_raw)
+        except ValueError as e:
+            flash(str(e), 'error')
+            return redirect(url_for('dashboard.dashboard_links.create_full'))
         if not slug:
-            slug = generate_slug()
+            for _ in range(5):
+                slug = generate_slug()
+                if not Link.query.filter_by(slug=slug).first() and slug.lower() not in Config.RESERVED_SLUGS:
+                    break
+            else:
+                flash('Unable to generate a unique slug. Try again.', 'error')
+                return redirect(url_for('dashboard.dashboard_links.create_full'))
+        else:
+            slug_error = validate_slug(slug, Config.RESERVED_SLUGS)
+            if slug_error:
+                flash(slug_error, 'error')
+                return redirect(url_for('dashboard.dashboard_links.create_full'))
         if Link.query.filter_by(slug=slug).first():
             flash('Slug exists', 'error')
             return redirect(url_for('dashboard.dashboard_links.create_full'))
         
+        try:
+            ios_url = normalize_optional_url(request.form.get('ios_url'))
+            android_url = normalize_optional_url(request.form.get('android_url'))
+            safe_url = normalize_optional_url(request.form.get('safe_url'))
+        except ValueError as e:
+            flash(str(e), 'error')
+            return redirect(url_for('dashboard.dashboard_links.create_full'))
+
         new_link = Link(
             destination=dest,
             slug=slug,
-            block_bots=request.form.get('block_bots') == 'true',
-            block_vpn=request.form.get('block_vpn') == 'true',
-            block_adblock=request.form.get('block_adblock') == 'true',
-            enable_captcha=request.form.get('enable_captcha') == 'true',
-            require_email=request.form.get('require_email') == 'true',
+            block_bots=parse_bool(request.form.get('block_bots')),
+            block_vpn=parse_bool(request.form.get('block_vpn')),
+            block_adblock=parse_bool(request.form.get('block_adblock')),
+            enable_captcha=parse_bool(request.form.get('enable_captcha')),
+            require_email=parse_bool(request.form.get('require_email')),
             email_policy=request.form.get('email_policy', 'all'),
-            ios_url=request.form.get('ios_url') or None,
-            android_url=request.form.get('android_url') or None,
-            safe_url=request.form.get('safe_url') or None,
+            ios_url=ios_url,
+            android_url=android_url,
+            safe_url=safe_url,
             allowed_countries=request.form.get('allowed_countries') or None,
             schedule_start_hour=int(request.form.get('schedule_start_hour')) if request.form.get('schedule_start_hour') else None,
             schedule_end_hour=int(request.form.get('schedule_end_hour')) if request.form.get('schedule_end_hour') else None,
@@ -148,11 +192,21 @@ def edit_link(slug):
     
     if request.method == 'POST':
         # General
-        link.destination = request.form.get('destination')
+        dest_raw = request.form.get('destination')
+        try:
+            link.destination = normalize_destination_url(dest_raw)
+        except ValueError as e:
+            flash(str(e), 'error')
+            return redirect(url_for('dashboard.dashboard_links.edit_link', slug=slug))
         
         # Targeting
-        link.ios_url = request.form.get('ios_url') or None
-        link.android_url = request.form.get('android_url') or None
+        try:
+            link.ios_url = normalize_optional_url(request.form.get('ios_url'))
+            link.android_url = normalize_optional_url(request.form.get('android_url'))
+            link.safe_url = normalize_optional_url(request.form.get('safe_url'))
+        except ValueError as e:
+            flash(str(e), 'error')
+            return redirect(url_for('dashboard.dashboard_links.edit_link', slug=slug))
         
         # Protection - checkboxes send value only when checked
         link.block_bots = 'block_bots' in request.form
@@ -162,7 +216,6 @@ def edit_link(slug):
         link.enable_captcha = 'enable_captcha' in request.form
         link.require_email = 'require_email' in request.form
         link.email_policy = request.form.get('email_policy', 'all')
-        link.safe_url = request.form.get('safe_url') or None
         link.allowed_countries = request.form.get('allowed_countries') or None
         
         # Password
@@ -237,12 +290,14 @@ def settings():
         # 1. Update .env (System Settings)
         from ...utils import update_env_file
         
+        ai_prompt = request.form.get('ai_prompt')
         env_updates = {
             'GEMINI_API_KEY': request.form.get('api_key'),
             'SERVER_URL': request.form.get('server_url'),
             'HOLEHE_CMD': request.form.get('holehe_cmd'),
             'GEMINI_MODEL': request.form.get('gemini_model'),
-            'AI_SYSTEM_PROMPT': request.form.get('ai_prompt')
+            'AI_PROMPT': ai_prompt,
+            'AI_SYSTEM_PROMPT': ai_prompt,  # Backward compatibility
         }
         
         # Filter None and update
@@ -274,6 +329,6 @@ def settings():
                          api_key=Config.GEMINI_API_KEY,
                          server_url=Config.SERVER_URL,
                          holehe_cmd=os.getenv('HOLEHE_CMD', 'holehe'),
-                         gemini_model=os.getenv('GEMINI_MODEL', 'gemini-1.5-pro'),
-                         ai_prompt=os.getenv('AI_SYSTEM_PROMPT', ''),
+                         gemini_model=Config.GEMINI_MODEL,
+                         ai_prompt=Config.AI_PROMPT,
                          disposable_domains=disposable_content)

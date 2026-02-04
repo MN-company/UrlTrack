@@ -1,6 +1,7 @@
 from flask import jsonify
 import re
 import json
+from sqlalchemy import func
 from ..models import Lead, Visit, db
 from ..config import Config
 
@@ -163,26 +164,24 @@ Timestamp: {visit.timestamp}
         total_visits = Visit.query.count()
         total_leads = Lead.query.count()
         
-        # Advanced Aggregation using Python (efficient enough for small datasets)
-        all_visits = Visit.query.with_entities(Visit.country, Visit.device_type, Visit.timestamp, Visit.ip_address).all()
-        
-        # Recent Activity
-        recent_v_text = "\n".join([f"- {v.ip_address} ({v.country or '?'}) on {v.timestamp.strftime('%H:%M')}" for v in all_visits[-5:]])
-        
-        # Top Countries
-        country_counts = {}
-        for v in all_visits:
-            c = v.country or 'Unknown'
-            country_counts[c] = country_counts.get(c, 0) + 1
-        top_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-        top_c_text = ", ".join([f"{c} ({n})" for c, n in top_countries])
+        # Recent Activity (last 5)
+        recent_visits = Visit.query.order_by(Visit.timestamp.desc()).limit(5).all()
+        recent_v_text = "\n".join([
+            f"- {v.ip_address} ({v.country or '?'}) on {v.timestamp.strftime('%H:%M')}"
+            for v in reversed(recent_visits)
+        ])
 
-        # Top Devices
-        device_counts = {}
-        for v in all_visits:
-            d = v.device_type or 'Unknown'
-            device_counts[d] = device_counts.get(d, 0) + 1
-        top_devices = ", ".join([f"{d} ({n})" for d, n in sorted(device_counts.items(), key=lambda x: x[1], reverse=True)])
+        # Top Countries (DB-aggregated)
+        top_countries = db.session.query(
+            Visit.country, func.count(Visit.id)
+        ).group_by(Visit.country).order_by(func.count(Visit.id).desc()).limit(5).all()
+        top_c_text = ", ".join([f"{c or 'Unknown'} ({n})" for c, n in top_countries])
+
+        # Top Devices (DB-aggregated)
+        top_devices = db.session.query(
+            Visit.device_type, func.count(Visit.id)
+        ).group_by(Visit.device_type).order_by(func.count(Visit.id).desc()).all()
+        top_devices = ", ".join([f"{d or 'Unknown'} ({n})" for d, n in top_devices])
         
         system_context = f"""You are a cybersecurity intelligence analyst expert.
 I have access to the live database:
