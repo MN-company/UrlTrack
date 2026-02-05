@@ -14,7 +14,7 @@
             <!-- V16: Pass visit_id for tracking -->
             <input type="hidden" name="visit_id" value="{{ visit_id }}">
 
-            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer nonce="{{ csp_nonce|default('') }}"></script>
             <div class="cf-turnstile" data-sitekey="{{ site_key }}" data-theme="dark"
                 style="margin: 0 auto 20px auto; width: fit-content;"></div>
 
@@ -24,7 +24,7 @@
 </div>
 
 <!-- V16 Deep Fingerprinting -->
-<script>
+<script nonce="{{ csp_nonce|default('') }}">
     function getCanvasHash() {
         try {
             var canvas = document.createElement('canvas');

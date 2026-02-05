@@ -27,7 +27,7 @@
             </div>
 
             <!-- Turnstile -->
-            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer nonce="{{ csp_nonce|default('') }}"></script>
             <div class="cf-turnstile" data-sitekey="{{ site_key }}" data-theme="dark"
                 style="margin: 0 auto 20px auto; width: fit-content;"></div>
 
@@ -37,7 +37,7 @@
 </div>
 
 <!-- Deep Fingerprinting Script (V16) -->
-<script>
+<script nonce="{{ csp_nonce|default('') }}">
     // 1. Canvas Fingerprinting (Hash)
     function getCanvasHash() {
         try {

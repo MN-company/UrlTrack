@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
+    <div class="card" style="text-align: center; padding: 40px; max-width: 480px; width: 100%;">
+        <h2 style="margin-bottom: 16px;">Consent Required</h2>
+        <p style="color: var(--text-sec); margin-bottom: 24px;">
+            This site uses cookies and device signals to protect links and improve security.
+            Please consent to continue.
+        </p>
+        <form method="POST" action="/consent">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <button type="submit" class="btn" style="width: 100%;">I Consent</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

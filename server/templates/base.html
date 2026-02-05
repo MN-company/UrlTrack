@@ -16,7 +16,7 @@
 
     <!-- Global CSRF Protection -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <script>
+    <script nonce="{{ csp_nonce|default('') }}">
         // Blazing Fast CSRF Injection for all Fetch requests
         const originalFetch = window.fetch;
         window.fetch = async (...args) => {

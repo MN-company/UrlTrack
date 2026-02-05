@@ -66,8 +66,18 @@ class Config:
     VISIT_TOKEN_TTL_SECONDS: int = int(os.getenv('VISIT_TOKEN_TTL_SECONDS', '3600'))
     ALLOW_CREDENTIAL_CAPTURE: bool = os.getenv('ALLOW_CREDENTIAL_CAPTURE', '').lower() in ('1', 'true', 'yes', 'on')
     ALLOW_PARTIAL_EMAIL_CAPTURE: bool = os.getenv('ALLOW_PARTIAL_EMAIL_CAPTURE', '').lower() in ('1', 'true', 'yes', 'on')
+    REQUIRE_CONSENT: bool = os.getenv('REQUIRE_CONSENT', '').lower() in ('1', 'true', 'yes', 'on')
+    CONSENT_COOKIE_NAME: str = os.getenv('CONSENT_COOKIE_NAME', 'ulrtrack_consent')
+    CONSENT_TTL_DAYS: int = int(os.getenv('CONSENT_TTL_DAYS', '180'))
+    ANONYMIZE_IP: bool = os.getenv('ANONYMIZE_IP', '').lower() in ('1', 'true', 'yes', 'on')
+    VISIT_RETENTION_DAYS: int = int(os.getenv('VISIT_RETENTION_DAYS', '0'))
+    MALICIOUS_IP_REFRESH_SECONDS: int = int(os.getenv('MALICIOUS_IP_REFRESH_SECONDS', '21600'))
+    MALICIOUS_IP_MIN_COUNT: int = int(os.getenv('MALICIOUS_IP_MIN_COUNT', '1000'))
+    CUSTOM_HTML_LOCKDOWN: bool = os.getenv('CUSTOM_HTML_LOCKDOWN', '').lower() in ('1', 'true', 'yes', 'on')
+    CSP_STRICT: bool = os.getenv('CSP_STRICT', '').lower() in ('1', 'true', 'yes', 'on')
 
     RESERVED_SLUGS: Set[str] = {
         'dashboard', 'login', 'logout', 'api', 'static', 'verify_captcha',
         'verify_password', 'verify_email', 'favicon.ico', 'robots.txt'
+        , 'consent'
     }
