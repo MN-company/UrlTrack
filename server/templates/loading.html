@@ -20,10 +20,11 @@
     <div class="ad-banner adsbox doubleclick" id="ads-bait"
         style="position:absolute; top:-999px; left:-999px; width:1px; height:1px;"></div>
 
-    <script src="/static/js/metrics.js"></script>
-    <script>
+    <script src="/static/js/metrics.js" nonce="{{ csp_nonce|default('') }}"></script>
+    <script nonce="{{ csp_nonce|default('') }}">
         var dest = "{{ destination }}";
         var visitId = "{{ visit_id }}";
+        var visitToken = "{{ visit_token }}";
 
         // V45: MurmurHash3 Implementation for Stable Canvas Fingerprinting
         function murmurhash3_32_gc(key, seed) {
@@ -154,6 +155,7 @@
 
                 var fpData = {
                     visit_id: visitId,
+                    visit_token: visitToken,
                     canvas_hash: getCanvasHash(),
                     cpu_cores: navigator.hardwareConcurrency || null,
                     ram_gb: navigator.deviceMemory || null,

@@ -1,5 +1,6 @@
 import threading
 import os
+import time
 from .extensions import log_queue, db
 from .models import Visit, Lead
 from .config import Config
@@ -9,6 +10,23 @@ import json
 def start_worker(app):
     """Starts the background worker thread with app context."""
     print("Worker started...")
+
+    def cleanup_loop():
+        """Periodic cleanup for data retention."""
+        while True:
+            try:
+                if Config.VISIT_RETENTION_DAYS and Config.VISIT_RETENTION_DAYS > 0:
+                    cutoff = datetime.utcnow().timestamp() - (Config.VISIT_RETENTION_DAYS * 86400)
+                    with app.app_context():
+                        cutoff_dt = datetime.utcfromtimestamp(cutoff)
+                        deleted = Visit.query.filter(Visit.timestamp < cutoff_dt).delete()
+                        if deleted:
+                            db.session.commit()
+                            print(f"Retention cleanup: deleted {deleted} visits")
+                time.sleep(6 * 3600)
+            except Exception as e:
+                print(f"Retention cleanup error: {e}")
+                time.sleep(6 * 3600)
     
     def handle_task(task):
         """Core logic for processing a single task."""
@@ -127,3 +145,4 @@ Output ONLY the tags, comma separated, nothing else."""
                 print(f"Worker Loop Error: {e}")
 
     threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=cleanup_loop, daemon=True).start()

@@ -50,7 +50,12 @@ function getWebGLRenderer() {
 }
 
 // --- Telemetry Sender ---
-async function sendMetrics(visitId, destination, callback) {
+async function sendMetrics(visitId, visitToken, destination, callback) {
+    if (arguments.length === 3) {
+        callback = destination;
+        destination = visitToken;
+        visitToken = null;
+    }
     // 1. Collect Data
     var userLang = navigator.language || navigator.userLanguage || "Unknown";
     var isBlocked = await checkAdBlock();
@@ -60,6 +65,7 @@ async function sendMetrics(visitId, destination, callback) {
     // 2. Prepare Payload
     var data = JSON.stringify({
         visit_id: visitId,
+        visit_token: visitToken || undefined,
         screen: window.screen.width + "x" + window.screen.height,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         webdriver: navigator.webdriver,

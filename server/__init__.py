@@ -9,12 +9,12 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Security Headers & Session Hardening
+    # Security Headers & Session Hardening (configurable via Config)
     app.config.update(
-        SESSION_COOKIE_SECURE=True,  # Requires HTTPS
-        SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE='Lax', # Strict can break OAuth/external redirects, Lax is safer for general use
-        PERMANENT_SESSION_LIFETIME=timedelta(hours=24)
+        SESSION_COOKIE_SECURE=app.config.get('SESSION_COOKIE_SECURE', True),
+        SESSION_COOKIE_HTTPONLY=app.config.get('SESSION_COOKIE_HTTPONLY', True),
+        SESSION_COOKIE_SAMESITE=app.config.get('SESSION_COOKIE_SAMESITE', 'Lax'),
+        PERMANENT_SESSION_LIFETIME=app.config.get('PERMANENT_SESSION_LIFETIME', timedelta(hours=24)),
     )
 
     # Initialize extensions
@@ -81,6 +81,14 @@ def create_app():
             
             # V29 Reverse DNS
             try: c.execute("ALTER TABLE visit ADD COLUMN hostname VARCHAR(256)")
+            except: pass
+
+            # V30 Country Code
+            try: c.execute("ALTER TABLE visit ADD COLUMN country_code VARCHAR(2)")
+            except: pass
+
+            # V61 Visit Notes
+            try: c.execute("ALTER TABLE visit ADD COLUMN notes TEXT")
             except: pass
             
             # V38 AI Architect (Custom Landing)
@@ -178,7 +186,8 @@ def create_app():
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['X-XSS-Protection'] = '1; mode=block'
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        if app.config.get('SESSION_COOKIE_SECURE', False):
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         # Production-ready CSP: Allows external fonts, scripts, and images needed by the app
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
@@ -186,7 +195,7 @@ def create_app():
             "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
             "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
             "img-src 'self' data: blob: https://flagcdn.com https://*.gravatar.com; "
-            "connect-src 'self'; "
+            "connect-src 'self' https://challenges.cloudflare.com; "
             "frame-src https://challenges.cloudflare.com;"
         )
         return response

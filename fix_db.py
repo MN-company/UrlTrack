@@ -85,6 +85,7 @@ def fix_db():
             add_column(cursor, 'visit', 'is_hosting BOOLEAN DEFAULT 0')
             add_column(cursor, 'visit', 'is_mobile BOOLEAN DEFAULT 0')
             add_column(cursor, 'visit', 'country_code VARCHAR(2)')
+            add_column(cursor, 'visit', 'notes TEXT')
 
             # Links
             add_column(cursor, 'link', 'schedule_start_hour INTEGER')

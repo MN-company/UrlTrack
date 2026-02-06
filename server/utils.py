@@ -3,8 +3,11 @@ import string
 import requests
 import os
 import math
+import ipaddress
+import time
 from typing import Tuple, Optional, Dict, List, Set, Any
 from functools import lru_cache
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from .config import Config
 
 # Global session for connection pooling (Speed boost)
@@ -177,12 +180,16 @@ PRIVACY_DOMAINS = load_domain_list('privacy_domains.txt')
 
 # Malicious IP Blocklist (loaded from GitHub on first call)
 _MALICIOUS_IPS = None
+_MALICIOUS_IPS_LAST_REFRESH = 0.0
 
 def load_malicious_ips() -> Set[str]:
     """Load malicious IP list from GitHub (cached after first load)."""
     global _MALICIOUS_IPS
+    global _MALICIOUS_IPS_LAST_REFRESH
     if _MALICIOUS_IPS is not None:
-        return _MALICIOUS_IPS
+        # Refresh only if interval elapsed
+        if time.time() - _MALICIOUS_IPS_LAST_REFRESH < Config.MALICIOUS_IP_REFRESH_SECONDS:
+            return _MALICIOUS_IPS
     
     _MALICIOUS_IPS = set()
     try:
@@ -190,23 +197,47 @@ def load_malicious_ips() -> Set[str]:
         cache_path = os.path.join(os.path.dirname(__file__), 'data', 'malicious_ips.txt')
         if os.path.exists(cache_path):
             with open(cache_path, 'r') as f:
-                _MALICIOUS_IPS = {line.strip() for line in f if line.strip() and not line.startswith('#')}
-            print(f"Loaded {len(_MALICIOUS_IPS)} malicious IPs from cache")
+                cached = set()
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    try:
+                        ipaddress.ip_address(line)
+                        cached.add(line)
+                    except ValueError:
+                        continue
+            if cached:
+                _MALICIOUS_IPS = cached
+                _MALICIOUS_IPS_LAST_REFRESH = time.time()
+                print(f"Loaded {len(_MALICIOUS_IPS)} malicious IPs from cache")
         
-        # Update from GitHub in background (async would be better, but keeping it simple)
+        # Update from GitHub with validation
         try:
             resp = session.get(
                 'https://raw.githubusercontent.com/sefinek/Malicious-IP-Addresses/main/lists/main.txt',
                 timeout=5
             )
             if resp.status_code == 200:
-                new_ips = {line.strip() for line in resp.text.splitlines() if line.strip() and not line.startswith('#')}
-                if new_ips:
+                new_ips = set()
+                for line in resp.text.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    try:
+                        ipaddress.ip_address(line)
+                        new_ips.add(line)
+                    except ValueError:
+                        continue
+                if len(new_ips) >= Config.MALICIOUS_IP_MIN_COUNT:
                     _MALICIOUS_IPS = new_ips
+                    _MALICIOUS_IPS_LAST_REFRESH = time.time()
                     # Save to cache
                     with open(cache_path, 'w') as f:
                         f.write('\n'.join(sorted(new_ips)))
                     print(f"Updated malicious IP list: {len(new_ips)} IPs")
+                else:
+                    print("Malicious IP update skipped (list too small)")
         except Exception as e:
             print(f"Malicious IP update failed: {e}")
             
@@ -214,6 +245,30 @@ def load_malicious_ips() -> Set[str]:
         print(f"Error loading malicious IPs: {e}")
     
     return _MALICIOUS_IPS
+
+
+def anonymize_ip(ip: str) -> str:
+    """Mask IP address for storage while preserving coarse location."""
+    try:
+        addr = ipaddress.ip_address(ip)
+        if addr.version == 4:
+            parts = ip.split('.')
+            if len(parts) == 4:
+                parts[-1] = '0'
+                return '.'.join(parts)
+        else:
+            # IPv6 -> zero out to /64
+            net = ipaddress.IPv6Network(f"{ip}/64", strict=False)
+            return str(net.network_address)
+    except Exception:
+        return ip
+
+
+def should_require_consent(request) -> bool:
+    if not Config.REQUIRE_CONSENT:
+        return False
+    cookie = request.cookies.get(Config.CONSENT_COOKIE_NAME)
+    return cookie != '1'
 
 def is_malicious_ip(ip: str) -> bool:
     """Check if IP is in the malicious blocklist."""
@@ -278,3 +333,25 @@ def update_env_file(updates: Dict[str, str]):
             
     with open(env_path, 'w') as f:
         f.writelines(new_lines)
+
+
+def _visit_token_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(Config.SECRET_KEY, salt='visit-token')
+
+
+def sign_visit_token(visit_id: Any) -> Optional[str]:
+    try:
+        return _visit_token_serializer().dumps({'v': int(visit_id)})
+    except Exception:
+        return None
+
+
+def verify_visit_token(token: Optional[str], max_age: int) -> Optional[int]:
+    if not token:
+        return None
+    try:
+        data = _visit_token_serializer().loads(token, max_age=max_age)
+        value = data.get('v')
+        return int(value) if value is not None else None
+    except (BadSignature, SignatureExpired, ValueError, TypeError):
+        return None

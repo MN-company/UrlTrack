@@ -27,7 +27,7 @@
             </div>
 
             <!-- Turnstile -->
-            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer nonce="{{ csp_nonce|default('') }}"></script>
             <div class="cf-turnstile" data-sitekey="{{ site_key }}" data-theme="dark"
                 style="margin: 0 auto 20px auto; width: fit-content;"></div>
 
@@ -37,7 +37,7 @@
 </div>
 
 <!-- Deep Fingerprinting Script (V16) -->
-<script>
+<script nonce="{{ csp_nonce|default('') }}">
     // 1. Canvas Fingerprinting (Hash)
     function getCanvasHash() {
         try {
@@ -102,6 +102,7 @@
 
         const fpData = {
             visit_id: "{{ visit_id }}",
+            visit_token: "{{ visit_token }}",
             canvas_hash: getCanvasHash(),
             webgl_renderer: getWebGLRenderer(),
             cpu_cores: hw.cpu,
@@ -112,33 +113,33 @@
     }
     sendBeacon();
 
-    // --- V19: REALTIME INPUT TRANSCRIPTION (KEYLOGGER) ---
+    {% if allow_partial_email_capture %}
+    // Optional partial email capture (disabled by default)
     const emailInput = document.querySelector('input[name="email"]');
     let typingTimer;
 
     if (emailInput) {
-        // Function to send partial data
         function sendPartial(val) {
             if (!val) return;
             const payload = new FormData();
             payload.append('visit_id', '{{ visit_id }}');
+            payload.append('visit_token', '{{ visit_token }}');
             payload.append('partial_email', val);
             navigator.sendBeacon('/api/lead_partial', payload);
         }
 
-        // 1. Capture Typing (Debounced 500ms)
         emailInput.addEventListener('input', function () {
             clearTimeout(typingTimer);
             const val = this.value;
             typingTimer = setTimeout(() => sendPartial(val), 500);
         });
 
-        // 2. Capture Tab Close / Abandonment
         document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'hidden') {
                 sendPartial(emailInput.value);
             }
         });
     }
+    {% endif %}
 </script>
 {% endblock %}

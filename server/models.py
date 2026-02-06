@@ -103,6 +103,7 @@ class Visit(DatabaseModel):
     user_agent: Mapped[Optional[str]] = mapped_column(String(500))
     referrer: Mapped[Optional[str]] = mapped_column(String(500))
     is_suspicious: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
     
     # Environment
     os_family: Mapped[Optional[str]] = mapped_column(String(64))
