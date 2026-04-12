@@ -8,7 +8,7 @@ Group=ulrtrack
 WorkingDirectory=/opt/ulrtrack
 EnvironmentFile=/opt/ulrtrack/.env
 Environment=FLASK_APP=server:create_app
-ExecStart=/opt/ulrtrack/venv/bin/sh -c '/opt/ulrtrack/venv/bin/flask db upgrade && /opt/ulrtrack/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 1 server.wsgi:app'
+ExecStart=/opt/ulrtrack/venv/bin/sh -c 'SKIP_BACKGROUND_WORKER=1 /opt/ulrtrack/venv/bin/python -m flask --app server:create_app db upgrade && exec /opt/ulrtrack/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 1 server.wsgi:app'
 Restart=always
 RestartSec=5
 

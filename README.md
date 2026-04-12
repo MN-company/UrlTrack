@@ -42,7 +42,7 @@ Optional integrations:
 
 ```bash
 export FLASK_APP=server:create_app
-SKIP_BACKGROUND_WORKER=1 flask db upgrade
+SKIP_BACKGROUND_WORKER=1 python -m flask --app server:create_app db upgrade
 ```
 
 ### 4. Run locally
@@ -79,8 +79,8 @@ Useful commands:
 
 ```bash
 export FLASK_APP=server:create_app
-SKIP_BACKGROUND_WORKER=1 flask db upgrade
-SKIP_BACKGROUND_WORKER=1 flask db migrate -m "describe change"
+SKIP_BACKGROUND_WORKER=1 python -m flask --app server:create_app db upgrade
+SKIP_BACKGROUND_WORKER=1 python -m flask --app server:create_app db migrate -m "describe change"
 ```
 
 ## Deployment
@@ -94,7 +94,7 @@ docker compose up --build
 The Docker image runs:
 
 ```bash
-flask db upgrade && gunicorn --bind 0.0.0.0:8000 --workers 1 server.wsgi:app
+SKIP_BACKGROUND_WORKER=1 python -m flask --app server:create_app db upgrade && gunicorn --bind 0.0.0.0:8000 --workers 1 server.wsgi:app
 ```
 
 `--workers 1` is intentional for SQLite deployments because multiple Gunicorn workers writing to the same SQLite database can introduce lock contention and inconsistent behavior.
@@ -115,3 +115,4 @@ Deployment examples are included in:
 - Environment variables are deployment-owned and are not edited from the dashboard
 - Domain deny lists for disposable and privacy email providers are managed from dashboard settings and stored under `server/data/`
 - If you need to create an admin from the CLI, use `python -m server.create_admin`
+- If `which flask` points outside `venv`, use `python -m flask` or `./venv/bin/python -m flask` to force correct interpreter

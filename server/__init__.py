@@ -104,6 +104,3 @@ def create_app() -> Flask:
     if not Config.SKIP_BACKGROUND_WORKER:
         start_worker(app)
     return app
-
-
-app = create_app()
