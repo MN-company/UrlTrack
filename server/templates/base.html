@@ -53,6 +53,10 @@
                     <i class="fa-solid fa-chart-line"></i>
                     Global Intel
                 </a>
+                <a href="{{ url_for('dashboard.dashboard_stats.graph') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_stats.graph' %}active{% endif %}">
+                    <i class="fa-solid fa-diagram-project"></i>
+                    Graph
+                </a>
                 <div style="flex: 1;"></div>
                 <a href="{{ url_for('dashboard.dashboard_links.settings') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.settings' %}active{% endif %}">
                     <i class="fa-solid fa-sliders"></i>

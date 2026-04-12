@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 
 from ...extensions import db
 from ...models import Link, Visit
@@ -105,6 +106,17 @@ def global_timeline():
 def stats(slug: str):
     link = Link.query.filter_by(slug=slug).first_or_404()
     visits = Visit.query.filter_by(link_id=link.id).order_by(Visit.timestamp.desc()).all()
+    avg_dwell_ms = (
+        db.session.query(func.avg(Visit.dwell_ms))
+        .filter(Visit.link_id == link.id, Visit.dwell_ms.isnot(None))
+        .scalar()
+    )
+    engaged_count = (
+        db.session.query(func.count(Visit.id))
+        .filter(Visit.link_id == link.id, Visit.dwell_ms.isnot(None), Visit.dwell_ms > 5000)
+        .scalar()
+        or 0
+    )
 
     now = datetime.utcnow()
     dates = [(now - timedelta(days=index)).strftime("%Y-%m-%d") for index in range(6, -1, -1)]
@@ -154,6 +166,8 @@ def stats(slug: str):
         top_countries=top_countries,
         top_referrers=top_referrers,
         cross_link_data=cross_link_data,
+        avg_dwell_ms=float(avg_dwell_ms) if avg_dwell_ms is not None else None,
+        engaged_count=engaged_count,
     )
 
 
@@ -197,3 +211,68 @@ def device_profile(fingerprint: str):
         webgl=webgl,
         total_visits=len(visits),
     )
+
+
+@bp.route("/graph")
+@login_required
+def graph():
+    visits = (
+        Visit.query.options(joinedload(Visit.link))
+        .filter(Visit.canvas_hash.isnot(None))
+        .order_by(Visit.timestamp.desc())
+        .all()
+    )
+
+    nodes = []
+    links = []
+    seen_nodes = set()
+    seen_links = set()
+
+    def add_node(node_id: str, node_type: str, label: str, url: str | None = None):
+        if node_id in seen_nodes:
+            return
+        seen_nodes.add(node_id)
+        nodes.append({"id": node_id, "type": node_type, "label": label, "url": url})
+
+    def add_link(source: str, target: str):
+        edge = (source, target)
+        if edge in seen_links:
+            return
+        seen_links.add(edge)
+        links.append({"source": source, "target": target})
+
+    for visit in visits:
+        if not visit.link or not visit.canvas_hash:
+            continue
+
+        hash_value = visit.canvas_hash
+        slug_value = visit.link.slug
+        hash_id = f"hash:{hash_value}"
+        slug_id = f"slug:{slug_value}"
+
+        add_node(
+            hash_id,
+            "hash",
+            hash_value,
+            url_for("dashboard.dashboard_stats.device_profile", fingerprint=hash_value),
+        )
+        add_node(
+            slug_id,
+            "slug",
+            slug_value,
+            url_for("dashboard.dashboard_stats.stats", slug=slug_value),
+        )
+        add_link(hash_id, slug_id)
+
+        if visit.email:
+            email_value = visit.email
+            email_id = f"email:{email_value}"
+            add_node(
+                email_id,
+                "email",
+                email_value,
+                url_for("dashboard.dashboard_stats.global_search", q=email_value),
+            )
+            add_link(hash_id, email_id)
+
+    return render_template("graph.html", graph_data={"nodes": nodes, "links": links})

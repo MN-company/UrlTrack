@@ -103,6 +103,7 @@ class Visit(DatabaseModel):
     canvas_hash: Mapped[Optional[str]] = mapped_column(String(64))
     webgl_renderer: Mapped[Optional[str]] = mapped_column(String(256))
     email: Mapped[Optional[str]] = mapped_column(String(255))
+    dwell_ms: Mapped[Optional[int]] = mapped_column(Integer)
 
     battery_level: Mapped[Optional[str]] = mapped_column(String(20))
     cpu_cores: Mapped[Optional[int]] = mapped_column(Integer)

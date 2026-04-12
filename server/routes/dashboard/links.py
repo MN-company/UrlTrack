@@ -2,11 +2,12 @@ import io
 from pathlib import Path
 
 import segno
+from dotenv import set_key
 from flask import Blueprint, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy import distinct, func
 
-from ...config import Config
+from ...config import BASE_DIR, Config
 from ...extensions import cache, db
 from ...models import Link, Visit
 from ...utils import sanitize, shorten_with_isgd
@@ -25,6 +26,11 @@ def _mask_url_for_link(slug: str) -> str | None:
 
 def _invalidate_link_cache(slug: str) -> None:
     cache.delete(f"link:{slug}")
+
+
+def _set_runtime_value(key: str, value):
+    current_app.config[key] = value
+    setattr(Config, key, value)
 
 
 def _link_form_values(form):
@@ -239,21 +245,66 @@ def settings():
     privacy_path = data_dir / "privacy_domains.txt"
     disposable_path.touch(exist_ok=True)
     privacy_path.touch(exist_ok=True)
+    dotenv_path = BASE_DIR / ".env"
+    dotenv_path.touch(exist_ok=True)
 
     if request.method == "POST":
-        disposable_domains = request.form.get("disposable_domains", "")
-        privacy_domains = request.form.get("privacy_domains", "")
-        disposable_lines = [sanitize(line, 255).lower() for line in disposable_domains.splitlines() if sanitize(line, 255)]
-        privacy_lines = [sanitize(line, 255).lower() for line in privacy_domains.splitlines() if sanitize(line, 255)]
-        disposable_path.write_text("\n".join(disposable_lines), encoding="utf-8")
-        privacy_path.write_text("\n".join(privacy_lines), encoding="utf-8")
-        flash("Domain lists updated. Restart the app to reload them.", "success")
+        settings_scope = sanitize(request.form.get("settings_scope"), 20) or "domains"
+        if settings_scope == "runtime":
+            server_url = sanitize(request.form.get("server_url"), 2048)
+            gemini_api_key = sanitize(request.form.get("gemini_api_key"), 512)
+            gemini_model = sanitize(request.form.get("gemini_model"), 255)
+            telegram_bot_token = sanitize(request.form.get("telegram_bot_token"), 512)
+            telegram_chat_id = sanitize(request.form.get("telegram_chat_id"), 255)
+            mask_with_isgd = "mask_with_isgd" in request.form
+            trust_proxy_headers = "trust_proxy_headers" in request.form
+            visit_retention_days = int(sanitize(request.form.get("visit_retention_days"), 10) or Config.VISIT_RETENTION_DAYS)
+
+            restart_required = False
+            if server_url:
+                set_key(dotenv_path, "SERVER_URL", server_url)
+                restart_required = True
+
+            if gemini_api_key:
+                set_key(dotenv_path, "GEMINI_API_KEY", gemini_api_key)
+                _set_runtime_value("GEMINI_API_KEY", gemini_api_key)
+            if gemini_model:
+                set_key(dotenv_path, "GEMINI_MODEL", gemini_model)
+                _set_runtime_value("GEMINI_MODEL", gemini_model)
+
+            if telegram_bot_token:
+                set_key(dotenv_path, "TELEGRAM_BOT_TOKEN", telegram_bot_token)
+                _set_runtime_value("TELEGRAM_BOT_TOKEN", telegram_bot_token)
+            if telegram_chat_id:
+                set_key(dotenv_path, "TELEGRAM_CHAT_ID", telegram_chat_id)
+                _set_runtime_value("TELEGRAM_CHAT_ID", telegram_chat_id)
+
+            set_key(dotenv_path, "MASK_WITH_ISGD", "true" if mask_with_isgd else "false")
+            set_key(dotenv_path, "TRUST_PROXY_HEADERS", "true" if trust_proxy_headers else "false")
+            set_key(dotenv_path, "VISIT_RETENTION_DAYS", str(visit_retention_days))
+
+            _set_runtime_value("MASK_WITH_ISGD", mask_with_isgd)
+            _set_runtime_value("TRUST_PROXY_HEADERS", trust_proxy_headers)
+            _set_runtime_value("VISIT_RETENTION_DAYS", visit_retention_days)
+
+            flash("Runtime settings updated.", "success")
+            if restart_required:
+                flash("SERVER_URL changed. Restart required.", "warning")
+        else:
+            disposable_domains = request.form.get("disposable_domains", "")
+            privacy_domains = request.form.get("privacy_domains", "")
+            disposable_lines = [sanitize(line, 255).lower() for line in disposable_domains.splitlines() if sanitize(line, 255)]
+            privacy_lines = [sanitize(line, 255).lower() for line in privacy_domains.splitlines() if sanitize(line, 255)]
+            disposable_path.write_text("\n".join(disposable_lines), encoding="utf-8")
+            privacy_path.write_text("\n".join(privacy_lines), encoding="utf-8")
+            flash("Domain lists updated. Restart the app to reload them.", "success")
         return redirect(url_for("dashboard.dashboard_links.settings"))
 
     return render_template(
         "settings.html",
         server_url=Config.SERVER_URL,
         gemini_model=Config.GEMINI_MODEL,
+        telegram_chat_id=Config.TELEGRAM_CHAT_ID,
         mask_with_isgd=Config.MASK_WITH_ISGD,
         trust_proxy_headers=Config.TRUST_PROXY_HEADERS,
         visit_retention_days=Config.VISIT_RETENTION_DAYS,

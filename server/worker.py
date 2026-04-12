@@ -3,6 +3,8 @@ import threading
 import time
 from datetime import datetime, timedelta
 
+import requests
+
 from .config import Config
 from .extensions import db, log_queue
 from .models import Visit
@@ -11,6 +13,46 @@ from .models import Visit
 STOP_SENTINEL = {"type": "__stop__"}
 _worker_started = False
 _worker_lock = threading.Lock()
+
+
+def _telegram_escape(value: str) -> str:
+    if not value:
+        return ""
+    for char in ("_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"):
+        value = value.replace(char, f"\\{char}")
+    return value
+
+
+def _fire_telegram(app, visit_payload: dict):
+    try:
+        with app.app_context():
+            slug = _telegram_escape(visit_payload.get("slug") or "unknown")
+            city = _telegram_escape(visit_payload.get("city") or "Unknown city")
+            country = _telegram_escape(visit_payload.get("country") or "Unknown country")
+            email = _telegram_escape(visit_payload.get("email") or "anonimo")
+            device_type = _telegram_escape(visit_payload.get("device_type") or "Unknown device")
+            os_family = _telegram_escape(visit_payload.get("os_family") or "Unknown OS")
+            timestamp = _telegram_escape(visit_payload.get("timestamp") or "Unknown time")
+            vpn_label = "Si" if visit_payload.get("is_vpn") else "No"
+            text = (
+                f"👁 *Nuova visita* su `/{slug}`\n"
+                f"📍 {city}, {country}\n"
+                f"📧 {email}\n"
+                f"🖥 {device_type} · {os_family}\n"
+                f"🔒 VPN: {vpn_label}\n"
+                f"🕐 {timestamp}"
+            )
+            requests.post(
+                f"https://api.telegram.org/bot{Config.TELEGRAM_BOT_TOKEN}/sendMessage",
+                data={
+                    "chat_id": Config.TELEGRAM_CHAT_ID,
+                    "text": text,
+                    "parse_mode": "Markdown",
+                },
+                timeout=5,
+            )
+    except Exception as exc:
+        print(f"Telegram delivery error: {exc}")
 
 
 def _cleanup_visits(app):
@@ -64,6 +106,18 @@ def _handle_task(app, task):
                     if match:
                         visit.email = match.email
                 db.session.commit()
+                if Config.TELEGRAM_BOT_TOKEN and Config.TELEGRAM_CHAT_ID:
+                    payload = {
+                        "slug": visit.link.slug if visit.link else None,
+                        "timestamp": visit.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if visit.timestamp else None,
+                        "city": visit.city,
+                        "country": visit.country,
+                        "email": visit.email,
+                        "device_type": visit.device_type,
+                        "os_family": visit.os_family,
+                        "is_vpn": visit.is_vpn,
+                    }
+                    threading.Thread(target=_fire_telegram, args=(app, payload), daemon=True).start()
             else:
                 print(f"Worker ignored unknown task type: {task.get('type')}")
     except Exception as exc:

@@ -118,3 +118,30 @@ def partial_email():
         visit.notes = note
     db.session.commit()
     return "OK", 200
+
+
+@bp.route("/dwell", methods=["POST"])
+@limiter.limit("60 per minute")
+def dwell():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        if not _validate_visit_token(data):
+            return "Unauthorized", 403
+
+        visit = db.session.get(Visit, int(data.get("visit_id", 0)))
+        if visit is None:
+            return "Not found", 404
+
+        dwell_ms = data.get("dwell_ms")
+        if not isinstance(dwell_ms, int):
+            return "Invalid dwell", 400
+        if dwell_ms < 0 or dwell_ms > 300000:
+            return "Invalid dwell", 400
+
+        visit.dwell_ms = dwell_ms
+        db.session.commit()
+        return "OK", 200
+    except Exception as exc:
+        print(f"Dwell Error: {exc}")
+        db.session.rollback()
+        return "Error", 500

@@ -50,6 +50,8 @@ class Config:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     SERVER_URL: str = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
     TURNSTILE_SITE_KEY: str = os.getenv("TURNSTILE_SITE_KEY", "")
     TURNSTILE_SECRET_KEY: str = os.getenv("TURNSTILE_SECRET_KEY", "")
     TRUST_PROXY_HEADERS: bool = _bool_env("TRUST_PROXY_HEADERS", False)
@@ -112,6 +114,8 @@ class Config:
             "WTF_CSRF_SSL_STRICT": config.WTF_CSRF_SSL_STRICT,
             "MAX_CONTENT_LENGTH": config.MAX_CONTENT_LENGTH,
             "SERVER_URL": config.SERVER_URL,
+            "TELEGRAM_BOT_TOKEN": config.TELEGRAM_BOT_TOKEN,
+            "TELEGRAM_CHAT_ID": config.TELEGRAM_CHAT_ID,
             "GEMINI_API_KEY": config.GEMINI_API_KEY,
             "GEMINI_MODEL": config.GEMINI_MODEL,
             "TURNSTILE_SITE_KEY": config.TURNSTILE_SITE_KEY,

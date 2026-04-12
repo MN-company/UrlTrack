@@ -25,6 +25,7 @@
         var dest = "{{ destination }}";
         var visitId = "{{ visit_id }}";
         var visitToken = "{{ visit_token }}";
+        var pageStartMs = performance.now();
 
         // V45: MurmurHash3 Implementation for Stable Canvas Fingerprinting
         function murmurhash3_32_gc(key, seed) {
@@ -160,7 +161,23 @@
             } catch (e) { console.error('Beacon Error:', e); }
 
             // Trigger Redirect AFTER beacon is queued
-            setTimeout(function () { window.location.href = dest; }, 100);
+            setTimeout(function () {
+                try {
+                    var dwellMs = Math.min(300000, Math.max(0, Math.round(performance.now() - pageStartMs)));
+                    fetch("/api/dwell", {
+                        method: "POST",
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            visit_id: visitId,
+                            visit_token: visitToken,
+                            dwell_ms: dwellMs
+                        }),
+                        keepalive: true,
+                        credentials: "same-origin"
+                    }).catch(function () { });
+                } catch (e) { }
+                window.location.href = dest;
+            }, 100);
 
         })();
     </script>
