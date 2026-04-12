@@ -14,5 +14,5 @@ fi
 export FLASK_APP=server:create_app
 export FLASK_ENV=development
 
-SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
-./venv/bin/python -m flask --app server:create_app run --host=127.0.0.1 --port=8000
+./venv/bin/flask db upgrade
+./venv/bin/flask run --host=127.0.0.1 --port=8000

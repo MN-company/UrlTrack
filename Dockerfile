@@ -15,4 +15,4 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "SKIP_BACKGROUND_WORKER=1 python -m flask --app server:create_app db upgrade && exec gunicorn --bind 0.0.0.0:8000 --workers 1 server.wsgi:app"]
+CMD ["sh", "-c", "flask db upgrade && gunicorn --bind 0.0.0.0:8000 --workers 1 server.wsgi:app"]

@@ -1,14 +1,15 @@
 import hashlib
 import secrets
 from datetime import datetime
+from pathlib import Path
 
 import pytz
-from flask import Blueprint, abort, make_response, redirect, render_template, request
+from flask import Blueprint, abort, current_app, make_response, redirect, render_template, request, send_from_directory, url_for
 from user_agents import parse
 
 from ..config import Config
 from ..extensions import cache, db, limiter, log_queue
-from ..models import Link, Visit
+from ..models import Link, User, Visit
 from ..utils import (
     anonymize_ip,
     generate_slug,
@@ -27,6 +28,21 @@ from ..validators import get_client_ip, normalize_destination_url
 
 
 bp = Blueprint("public", __name__)
+
+
+@bp.route("/", methods=["GET"])
+def index():
+    if Config.ADMIN_BOOTSTRAP_ENABLED and User.query.count() == 0:
+        return redirect(url_for("auth.setup"))
+    return redirect(url_for("auth.login"))
+
+
+@bp.route("/favicon.ico", methods=["GET"])
+def favicon():
+    favicon_path = Path(current_app.static_folder or "") / "favicon.ico"
+    if favicon_path.exists():
+        return send_from_directory(current_app.static_folder, "favicon.ico")
+    return ("", 204)
 
 
 def _safe_url_or_none(url: str):
