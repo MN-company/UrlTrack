@@ -1,145 +1,43 @@
-{% extends "base.html" %}
+{% extends "gate_base.html" %}
+
+{% block title %}Verify Email{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
-    <div class="card" style="width: 100%; max-width: 400px; text-align: center;">
-        <h2 style="margin-bottom: 20px; font-weight: 300;">IDENTITY <span class="text-accent">VERIFICATION</span></h2>
+<h1>Email verification</h1>
+<p>This link requires a valid email address before continuing.</p>
 
-        {% if error %}
-        <div
-            style="background: rgba(255,0,0,0.1); color: #ff5555; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
-            {{ error }}
-        </div>
-        {% endif %}
+<form method="POST" action="{{ url_for('public.verify_email') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="slug" value="{{ slug }}">
+    <input type="hidden" name="visit_id" value="{{ visit_id }}">
+    <label for="email">Email</label>
+    <input id="email" type="email" name="email" placeholder="name@example.com" required autofocus>
+    <button type="submit">Continue</button>
+</form>
+{% endblock %}
 
-        <p style="color: var(--text-sec); margin-bottom: 20px;">
-            This resource requires email verification to proceed.
-        </p>
-
-        <form method="POST" action="/verify_email">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="slug" value="{{ slug }}">
-            <input type="hidden" name="visit_id" value="{{ visit_id }}">
-
-            <div style="margin-bottom: 20px;">
-                <input type="email" name="email" placeholder="name@example.com" required
-                    style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: white; border-radius: 6px; text-align: center;">
-            </div>
-
-            <!-- Turnstile -->
-            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer nonce="{{ csp_nonce|default('') }}"></script>
-            <div class="cf-turnstile" data-sitekey="{{ site_key }}" data-theme="dark"
-                style="margin: 0 auto 20px auto; width: fit-content;"></div>
-
-            <button type="submit" class="btn" style="width: 100%;">CONTINUE</button>
-        </form>
-    </div>
-</div>
-
-<!-- Deep Fingerprinting Script (V16) -->
+{% block scripts %}
+{% if allow_partial_email_capture %}
 <script nonce="{{ csp_nonce|default('') }}">
-    // 1. Canvas Fingerprinting (Hash)
-    function getCanvasHash() {
-        try {
-            var canvas = document.createElement('canvas');
-            var ctx = canvas.getContext('2d');
-            ctx.textBaseline = "top";
-            ctx.font = "14px 'Arial'";
-            ctx.textBaseline = "alphabetic";
-            ctx.fillStyle = "#f60";
-            ctx.fillRect(125, 1, 62, 20);
-            ctx.fillStyle = "#069";
-            ctx.fillText("ulrTrack_V16_Fingerprint", 2, 15);
-            ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-            ctx.fillText("ulrTrack_V16_Fingerprint", 4, 17);
+    const input = document.getElementById('email');
+    let timer;
 
-            var b64 = canvas.toDataURL().replace("data:image/png;base64,", "");
-            var bin = atob(b64);
-            var crc = -1;
-            for (var i = 0; i < bin.length; i++) {
-                crc = crc >>> 8 ^ "0123456789".charCodeAt(crc & 255) ^ bin.charCodeAt(i);
-            }
-            return (crc >>> 0).toString(16);
-        } catch (e) { return null; }
+    function sendPartial(value) {
+        if (!value) return;
+        const payload = new FormData();
+        payload.append('visit_id', '{{ visit_id }}');
+        payload.append('visit_token', '{{ visit_token }}');
+        payload.append('partial_email', value);
+        navigator.sendBeacon("{{ url_for('api.partial_email') }}", payload);
     }
 
-    // 2. WebGL Renderer
-    function getWebGLRenderer() {
-        try {
-            var canvas = document.createElement('canvas');
-            var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-            return gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-        } catch (e) { return "Unknown"; }
-    }
-
-    // 3. Hardware Concurrency & Memory (V24 Pro)
-    function getHardwareInfo() {
-        return {
-            cpu: navigator.hardwareConcurrency || 'Unknown',
-            ram: navigator.deviceMemory || 'Unknown'
-        };
-    }
-
-    // 4. Battery Status (V24 Pro) - Async
-    async function getBatteryStatus() {
-        if (navigator.getBattery) {
-            try {
-                const b = await navigator.getBattery();
-                return {
-                    level: Math.round(b.level * 100) + "%",
-                    charging: b.charging ? "Yes" : "No"
-                };
-            } catch (e) { return {}; }
-        }
-        return {};
-    }
-
-    // Send Deep Fingerprint ASAP (Updated for V24)
-    async function sendBeacon() {
-        const hw = getHardwareInfo();
-        const batt = await getBatteryStatus();
-
-        const fpData = {
-            visit_id: "{{ visit_id }}",
-            visit_token: "{{ visit_token }}",
-            canvas_hash: getCanvasHash(),
-            webgl_renderer: getWebGLRenderer(),
-            cpu_cores: hw.cpu,
-            ram_gb: hw.ram,
-            battery_level: batt.level
-        };
-        navigator.sendBeacon("/api/beacon", JSON.stringify(fpData));
-    }
-    sendBeacon();
-
-    {% if allow_partial_email_capture %}
-    // Optional partial email capture (disabled by default)
-    const emailInput = document.querySelector('input[name="email"]');
-    let typingTimer;
-
-    if (emailInput) {
-        function sendPartial(val) {
-            if (!val) return;
-            const payload = new FormData();
-            payload.append('visit_id', '{{ visit_id }}');
-            payload.append('visit_token', '{{ visit_token }}');
-            payload.append('partial_email', val);
-            navigator.sendBeacon('/api/lead_partial', payload);
-        }
-
-        emailInput.addEventListener('input', function () {
-            clearTimeout(typingTimer);
-            const val = this.value;
-            typingTimer = setTimeout(() => sendPartial(val), 500);
-        });
-
-        document.addEventListener('visibilitychange', function () {
-            if (document.visibilityState === 'hidden') {
-                sendPartial(emailInput.value);
-            }
-        });
-    }
-    {% endif %}
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => sendPartial(input.value.trim()), 600);
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') sendPartial(input.value.trim());
+    });
 </script>
+{% endif %}
 {% endblock %}

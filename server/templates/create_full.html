@@ -174,10 +174,12 @@
                 <input type="text" name="slug" placeholder="e.g. secret-sale">
             </div>
 
+            {% if mask_with_isgd %}
             <div class="toggle-row" style="margin-top: 10px;">
-                <label>Mask Link (Hide Server URL via is.gd)</label>
-                <input type="checkbox" name="mask_link" value="true" style="width:auto;">
+                <label>Public masking</label>
+                <span>Enabled globally via MASK_WITH_ISGD</span>
             </div>
+            {% endif %}
         </div>
 
         <!-- V14: Limits Tab (New) -->

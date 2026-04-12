@@ -1,130 +1,66 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Overwatch | Login</title>
-    <!-- Fonts -->
+    <title>UrlTrack Login</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg-dark: #0f111a;
-            --accent-primary: #3b82f6;
-            --text-primary: #e2e8f0;
-            --glass-bg: rgba(22, 27, 34, 0.8);
-            --border-subtle: #30363d;
-        }
-
         body {
-            background-color: var(--bg-dark);
-            background-image:
-                radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.1) 0%, transparent 20%),
-                radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 20%);
-            color: var(--text-primary);
-            font-family: 'Inter', sans-serif;
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             margin: 0;
-            overflow: hidden;
+            min-height: 100vh;
+            font-family: Inter, sans-serif;
+            background: linear-gradient(135deg, #0b1220 0%, #101a2f 55%, #172036 100%);
+            color: #e5edf7;
+            display: grid;
+            place-items: center;
         }
-
-        .login-card {
-            background: var(--glass-bg);
-            backdrop-filter: blur(16px);
-            border: 1px solid var(--border-subtle);
-            padding: 3rem;
-            border-radius: 16px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            text-align: center;
+        .card {
+            width: min(420px, calc(100vw - 2rem));
+            padding: 2rem;
+            border-radius: 20px;
+            background: rgba(11, 18, 32, 0.88);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
         }
-
-        .brand {
-            font-family: 'Outfit', sans-serif;
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 2rem;
-            letter-spacing: -0.02em;
-        }
-
-        .brand span {
-            color: var(--accent-primary);
-        }
-
-        .input-group {
-            margin-bottom: 1.5rem;
-            text-align: left;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-size: 0.9rem;
-            color: #94a3b8;
-        }
-
+        h1 { margin: 0 0 0.5rem; font-size: 1.75rem; }
+        p { color: #9fb0c8; line-height: 1.5; }
+        label { display: block; margin-bottom: 0.4rem; font-size: 0.9rem; color: #b9c7db; }
         input {
             width: 100%;
-            padding: 0.75rem 1rem;
-            background: #0d1117;
-            border: 1px solid var(--border-subtle);
-            border-radius: 8px;
-            color: white;
-            font-size: 1rem;
-            transition: all 0.2s;
             box-sizing: border-box;
+            padding: 0.85rem 0.95rem;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(15, 23, 42, 0.9);
+            color: #fff;
+            margin-bottom: 1rem;
         }
-
-        input:focus {
-            outline: none;
-            border-color: var(--accent-primary);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-        }
-
-        .btn {
+        button {
             width: 100%;
-            padding: 0.85rem;
-            background: var(--accent-primary);
+            padding: 0.9rem 1rem;
+            border: 0;
+            border-radius: 12px;
+            background: #3b82f6;
             color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 1rem;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.2s;
         }
-
-        .btn:hover {
-            background: #2563eb;
-            transform: translateY(-1px);
-        }
-
         .flash {
-            padding: 0.75rem;
-            border-radius: 6px;
+            margin-bottom: 1rem;
+            padding: 0.85rem 0.95rem;
+            border-radius: 12px;
             background: rgba(239, 68, 68, 0.15);
-            color: #ef4444;
-            margin-bottom: 1.5rem;
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            font-size: 0.9rem;
+            color: #fecaca;
         }
     </style>
 </head>
-
 <body>
-
-    <div class="login-card">
-        <div class="brand">
-            <i class="fa-solid fa-eye"></i> OVERWATCH
-        </div>
+    <div class="card">
+        <h1>Dashboard Login</h1>
+        <p>Sign in with your admin email and password. If your account has 2FA or a passkey, you’ll verify it in the next step.</p>
 
         {% with messages = get_flashed_messages() %}
         {% if messages %}
@@ -136,26 +72,12 @@
 
         <form method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-            <div class="input-group">
-                <label>Operator ID</label>
-                <input type="text" name="username" placeholder="Username" required autofocus>
-            </div>
-
-            <div class="input-group">
-                <label>Passphrase</label>
-                <input type="password" name="password" placeholder="••••••••" required>
-            </div>
-
-            <button type="submit" class="btn">Authenticate</button>
+            <label for="email">Email</label>
+            <input id="email" type="email" name="email" placeholder="admin@example.com" required autofocus>
+            <label for="password">Password</label>
+            <input id="password" type="password" name="password" placeholder="Minimum 12 characters" required>
+            <button type="submit">Continue</button>
         </form>
-
-        <div style="margin-top: 2rem; font-size: 0.8rem; color: #64748b;">
-            SECURE ACCESS ONLY <br>
-            UNAUTHORIZED ACCESS IS PROHIBITED
-        </div>
     </div>
-
 </body>
-
 </html>

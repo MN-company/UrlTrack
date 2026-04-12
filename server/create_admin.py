@@ -1,85 +1,81 @@
-"""
-Admin User Setup Script
-Creates initial admin user for dashboard access.
-Run this script once after deploying the application.
-"""
-import sys
-import os
-
-# Add parent directory to path
-# Add parent directory to path to allow importing server package
-# Correctly handles running from root or server/ dir
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir)
-
-# Try relative import first (if package), then fallback to absolute
-try:
-    from server import create_app, db
-    from server.models import User
-except ImportError:
-    # If we are running inside server/, we might need to adjust
-    sys.path.insert(0, current_dir)
-    from server import create_app, db
-    from server.models import User
-from werkzeug.security import generate_password_hash
 import getpass
 
-def create_admin():
-    app = create_app()
-    
-    with app.app_context():
-        # Check if admin already exists
-        existing = User.query.filter_by(username='admin').first()
-        if existing:
-            print("⚠️  Admin user already exists!")
-            overwrite = input("Do you want to reset the password? (yes/no): ")
-            if overwrite.lower() != 'yes':
-                print("❌ Setup cancelled.")
-                return
-            
-            # Reset password
-            print("\n🔐 Reset Admin Password")
-            password = getpass.getpass("New password: ")
-            password_confirm = getpass.getpass("Confirm password: ")
-            
-            if password != password_confirm:
-                print("❌ Passwords do not match!")
-                return
-            
-            existing.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
-            existing.totp_enabled = False  # Reset 2FA
-            existing.totp_secret = None
-            existing.passkey_credentials = None
-            db.session.commit()
-            print("✅ Admin password reset successfully!")
-            print("   2FA has been disabled. You can re-enable it in Settings.")
-        else:
-            # Create new admin
-            print("👤 Create Admin User")
-            while True:
-                password = getpass.getpass("Enter admin password (min 12 chars): ")
-                if len(password) < 12:
-                    print("❌ Password must be at least 12 characters long.")
-                    continue
-                break
-                
-            password_confirm = getpass.getpass("Confirm password: ")
-            
-            if password != password_confirm:
-                print("❌ Passwords do not match!")
-                return
-            
-            admin = User(
-                username='admin',
-                password_hash=generate_password_hash(password, method='pbkdf2:sha256')
-            )
-            
-            db.session.add(admin)
-            db.session.commit()
-            print("✅ Admin user created successfully!")
-            print("   Username: admin")
-            print("   You can enable 2FA in Settings after logging in.")
+from werkzeug.security import check_password_hash, generate_password_hash
 
-if __name__ == '__main__':
-    create_admin()
+from server import create_app
+from server.extensions import db
+from server.models import SetupState, User
+from server.utils import generate_secret_code
+
+
+def _setup_state():
+    state = db.session.get(SetupState, 1)
+    if state is None:
+        state = SetupState(id=1, setup_completed=False)
+        db.session.add(state)
+        db.session.commit()
+    return state
+
+
+def _prompt_password():
+    while True:
+        password = getpass.getpass("Password (min 12 chars): ")
+        if len(password) < 12:
+            print("Password must be at least 12 characters long.")
+            continue
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            print("Passwords do not match.")
+            continue
+        return password
+
+
+def main():
+    app = create_app()
+    with app.app_context():
+        state = _setup_state()
+        email = input("Admin email: ").strip().lower()
+        username = input("Display name (optional): ").strip()
+        password = _prompt_password()
+
+        if User.query.count() == 0:
+            secret_code = generate_secret_code()
+            state.setup_completed = True
+            state.admin_secret_hash = generate_password_hash(secret_code)
+            user = User(
+                email=email,
+                username=username or email.split("@", 1)[0],
+                password_hash=generate_password_hash(password),
+            )
+            db.session.add(user)
+            db.session.commit()
+            print("First admin created successfully.")
+            print("Store this server secret code securely:")
+            print(secret_code)
+            return
+
+        if not state.admin_secret_hash:
+            print("No admin secret is configured. Use the web bootstrap first.")
+            return
+
+        secret_code = getpass.getpass("Server secret code: ")
+        if not check_password_hash(state.admin_secret_hash, secret_code):
+            print("Invalid server secret code.")
+            return
+
+        if User.query.filter_by(email=email).first():
+            print("An admin with that email already exists.")
+            return
+
+        user = User(
+            email=email,
+            username=username or email.split("@", 1)[0],
+            password_hash=generate_password_hash(password),
+        )
+        db.session.add(user)
+        db.session.commit()
+        print("Admin created successfully.")
+
+
+if __name__ == "__main__":
+    main()

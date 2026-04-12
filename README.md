@@ -1,82 +1,117 @@
-# 🦅 ulrTrack: Advanced Intelligence Router
+# UrlTrack
 
-**The Open-Source "Link Router" for Advanced Analytics & Traffic Control.**
+UrlTrack is a self-hosted traffic routing and visit analytics platform. It shortens or fronts links, applies access gates such as email, password, captcha, country and VPN checks, and records visit telemetry for later analysis in the dashboard.
 
-ulrTrack is a sophisticated URL routing platform designed for deep traffic analysis, behavioral fingerprinting, and granular access control. Unlike standard URL shorteners, ulrTrack acts as an intelligent gateway that analyzes every visitor in real-time before routing them to their destination.
+## Features
 
-![Dashboard Preview](dashboard_preview.png)
+- Link routing with per-link controls for email gate, password, captcha, country allowlist, VPN blocking, bot blocking, safe URL fallback, mobile targeting, scheduling, and click limits
+- Visit analytics with IP, geography, device, browser, fingerprint, ETag, and referrer data
+- Fingerprint-centric investigation pages through the dashboard device profile
+- AI analyst console over links and visits with `@visit:`, `@hash:`, `@link:`, `@ip:`, and `@email:` shortcuts
+- Admin authentication with email and password, optional TOTP, optional passkeys, and first-run bootstrap
+- Deployment assets for `nginx`, `fail2ban`, `systemd`, Docker, Compose, and Fly.io
 
-## 🚀 Core Capabilities
+## Quickstart
 
-### 1. 🧠 Ultra-Customizable Routing
-Define exactly who sees your content and where they go based on granular rules:
-*   **Device Targeting:** Route iOS users to App Store, Android to Play Store, and Desktop to Web.
-*   **Geo-Fencing:** Allow or Block traffic from specific countries.
-*   **VPN/Proxy Shield:** Automatically detect and filter traffic from commercial VPNs, Proxy services, and Data Centers (AWS, DigitalOcean, etc.).
-*   **Time-Based Access:** Schedule links to open/close at specific hours (e.g., "Office Hours Only").
-*   **Bot Cloaking:** Show a harmless "404" or "Safe Page" to bots/crawlers while real users get through.
+### 1. Clone and install
 
-### 2. 🔬 Deep Behavioral Analytics
-Going far beyond simple click counts, providing a forensic level of detail:
-*   **Hardware Fingerprinting:** Detect Screen Resolution, GPU Renderer, CPU Cores, and RAM.
-*   **Network Intelligence:** Identify ISP, Organization, and Connection Type (Residential/Cellular/Corporate).
-*   **Session Graph:** Visualize connections between different visitors (e.g., "Same device, different IP").
-*   **AI Analyst (Gemini 2.0):** Ask questions like *"What is the top device used in Italy today?"* directly in the dashboard.
-
-### 3. 🛡️ Security Gates
-Protect your destination with interactive challenges:
-*   **Email Gate:** Require a validated email address to proceed (checks for disposable/temporary domains).
-*   **Password Protection:** Secure SHA-256 hashed access.
-*   **reCAPTCHA / Turnstile:** Invisible bot protection.
-
----
-
-## 🛠️ Installation (Self-Hosted)
-
-### Prerequisites
-*   Python 3.10+
-*   pip / virtualenv
-
-### 1. Clone & Setup
 ```bash
-git clone https://github.com/MN-company/ulrTrack.git
-cd ulrTrack
-
-# Create Virtual Env
+git clone https://github.com/MN-company/UrlTrack.git
+cd UrlTrack
 python3 -m venv venv
 source venv/bin/activate
-
-# Install Dependencies
 pip install -r server/requirements.txt
 ```
 
-### 2. Configure Environment
-Copy `.env.example` to `.env` and configure:
+### 2. Configure environment
+
+Copy `.env.example` to `.env` and fill in at least:
+
 ```bash
-SERVER_URL=https://your-domain.com
-SECRET_KEY=your-secret-key
-GEMINI_API_KEY=your-gemini-key  # For AI Features
+SECRET_KEY=replace-this
+SERVER_URL=http://127.0.0.1:8000
+DATABASE_URL=sqlite:///data/ulrtrack.db
 ```
 
-### 3. Initialize & Run
-```bash
-# Initialize Database
-python3 -m server.init_db
+Optional integrations:
 
-# Run Development Server
+- `GEMINI_API_KEY` enables the AI analyst
+- `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` enable captcha gates
+
+### 3. Initialize the database
+
+```bash
+export FLASK_APP=server:create_app
+SKIP_BACKGROUND_WORKER=1 flask db upgrade
+```
+
+### 4. Run locally
+
+```bash
 ./run.sh
 ```
 
----
+Visit [http://127.0.0.1:8000/setup](http://127.0.0.1:8000/setup) on first start to create the first admin account. The setup flow will generate a server secret code and show it once. Keep it safe: it is required later when creating additional admin accounts.
 
-## 📊 Dashboard Features
+## Authentication
 
-*   **Live Feed:** Real-time stream of every click.
-*   **Visual Graph:** Interactive node graph showing relationships between Visitors, IPs, and Devices.
-*   **Export:** Full CSV/JSON export for external analysis.
-*   **System Status:** Monitor background workers and AI latency.
+- Login identity is the admin email address
+- Passwords must be at least 12 characters
+- TOTP can be enabled from the dashboard security page
+- Passkeys can be registered after login and can also be used during the second step of login
+- The server secret code is only for creating admins, not for normal login
 
----
+## Public Flow
 
-## ⚠️ Disclaimer
-This tool is designed for legitimate marketing analytics, traffic management, and cybersecurity research. The developers are not responsible for misuse.
+For each incoming visit UrlTrack:
+
+1. Resolves the link by slug
+2. Applies optional consent, schedule, geo, bot, VPN, and rate-limit checks
+3. Enforces optional captcha, password, and email gates
+4. Records the visit and queues background enrichment
+5. Serves the loading page, gathers browser telemetry, then redirects to the final destination
+
+## Database and Migrations
+
+Schema changes are managed only through Flask-Migrate. The app no longer performs runtime `ALTER TABLE` operations.
+
+Useful commands:
+
+```bash
+export FLASK_APP=server:create_app
+SKIP_BACKGROUND_WORKER=1 flask db upgrade
+SKIP_BACKGROUND_WORKER=1 flask db migrate -m "describe change"
+```
+
+## Deployment
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+The Docker image runs:
+
+```bash
+flask db upgrade && gunicorn --bind 0.0.0.0:8000 --workers 1 server.wsgi:app
+```
+
+`--workers 1` is intentional for SQLite deployments because multiple Gunicorn workers writing to the same SQLite database can introduce lock contention and inconsistent behavior.
+
+### Linux service stack
+
+Deployment examples are included in:
+
+- `deploy/nginx/ulrtrack.conf`
+- `deploy/fail2ban/ulrtrack.conf`
+- `deploy/fail2ban/filter.d/ulrtrack-auth.conf`
+- `deploy/fail2ban/filter.d/ulrtrack-scan.conf`
+- `deploy/systemd/ulrtrack.service`
+- `deploy/scripts/setup.sh`
+
+## Notes
+
+- Environment variables are deployment-owned and are not edited from the dashboard
+- Domain deny lists for disposable and privacy email providers are managed from dashboard settings and stored under `server/data/`
+- If you need to create an admin from the CLI, use `python -m server.create_admin`

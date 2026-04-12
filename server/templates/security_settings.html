@@ -1,172 +1,109 @@
 {% extends "base.html" %}
 
-{% block breadcrumb %}System / Security Settings{% endblock %}
+{% block breadcrumb %}System / Security{% endblock %}
 
 {% block content %}
-<div class="dashboard-grid" style="grid-template-columns: 1fr 1fr; align-items: start;">
-
-    <!-- MFA Status -->
-    <div class="card glass">
+<div class="dashboard-grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="card">
         <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-shield-halved"></i> 2FA Authentication</span>
-            {% if user.totp_enabled %}
-            <div class="badge badge-success">Enabled</div>
-            {% else %}
-            <div class="badge badge-warning">Disabled</div>
-            {% endif %}
+            <span class="card-title"><i class="fa-solid fa-mobile-screen-button"></i> Two-factor authentication</span>
+            <div class="badge badge-{{ 'success' if user.totp_enabled else 'warning' }}">{{ 'Enabled' if user.totp_enabled else 'Disabled' }}</div>
         </div>
-
-        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-            Secure your account with Time-based One Time Passwords (TOTP). Compatible with Google Authenticator, Authy,
-            etc.
+        <p style="color:var(--text-secondary);margin-bottom:1rem;">
+            Use TOTP codes from an authenticator app and keep backup codes for recovery.
         </p>
 
         {% if user.totp_enabled %}
-        <div
-            style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-            <div style="font-weight: 600; color: #34d399; margin-bottom: 0.5rem;"><i
-                    class="fa-solid fa-check-circle"></i> Protection Active</div>
-            <div style="font-size: 0.9rem;">Your account is protected. Codes are required at login.</div>
-        </div>
         <form action="{{ url_for('dashboard.dashboard_security.disable_2fa') }}" method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-ghost w-full"
-                style="color: var(--accent-danger); border-color: var(--accent-danger);">Disable 2FA</button>
+            <label for="disable_password">Current password</label>
+            <input id="disable_password" name="password" type="password" placeholder="Required to disable 2FA" required>
+            <button class="btn btn-ghost w-full" style="color:var(--accent-danger);">Disable 2FA</button>
         </form>
         {% else %}
-        <a href="{{ url_for('dashboard.dashboard_security.setup_2fa') }}" class="btn btn-primary w-full">
-            <i class="fa-solid fa-qrcode"></i> Setup TOTP
+        <a href="{{ url_for('dashboard.dashboard_security.setup_2fa') }}" class="btn btn-primary w-full" style="justify-content:center;">
+            <i class="fa-solid fa-qrcode"></i> Set up authenticator
         </a>
         {% endif %}
+
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <a href="{{ url_for('dashboard.dashboard_security.show_backup_codes') }}" class="btn btn-ghost w-full" style="justify-content:center;">View latest backup codes</a>
+            <form action="{{ url_for('dashboard.dashboard_security.regenerate_backup_codes') }}" method="POST" style="flex:1;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-ghost w-full" {% if not user.totp_enabled %}disabled{% endif %}>Regenerate codes</button>
+            </form>
+        </div>
+        <p style="margin-top:0.75rem;color:var(--text-secondary);font-size:0.85rem;">Stored backup code hashes: {{ backup_count }}</p>
     </div>
 
-    <!-- Passkeys (WebAuthn) -->
     <div class="card">
         <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-fingerprint"></i> Passkeys (Biometric)</span>
-            <div class="badge badge-blue">FIDO2</div>
+            <span class="card-title"><i class="fa-solid fa-fingerprint"></i> Passkeys</span>
+            <div class="badge badge-blue">{{ passkey_count }}</div>
         </div>
-
-        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-            Login using TouchID, FaceID, or hardware keys (YubiKey). Passwordless and phishing-resistant.
-        </p>
-
-        <div style="margin-bottom: 1.5rem;">
-            <div
-                style="display: flex; justify-content: space-between; margin-bottom: 1rem; font-size: 0.8rem; color: var(--text-muted); padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-subtle);">
-                <span>DEVICE NAME</span>
-                <span>ADDED</span>
+        <div style="display:flex;gap:0.75rem;margin-bottom:1rem;">
+            <input type="text" id="passkey-name" placeholder="Device name">
+            <button id="register-passkey" class="btn btn-primary">Add passkey</button>
+        </div>
+        <div id="passkey-status" style="min-height:1.2rem;color:var(--text-secondary);margin-bottom:1rem;"></div>
+        <div style="display:grid;gap:0.75rem;">
+            {% for passkey in passkeys %}
+            <div class="toggle-row">
+                <label>{{ passkey.name }}</label>
+                <button type="button" class="btn btn-ghost" onclick="deletePasskey('{{ passkey.id }}')">Delete</button>
             </div>
-
-            {% if passkeys %}
-            {% for pk in passkeys %}
-            <div class="flex-between" style="margin-bottom: 0.75rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <i class="fa-solid fa-mobile-screen"></i> {{ pk.name }}
-                </div>
-                <form action="{{ url_for('dashboard.dashboard_passkey.passkey_delete', credential_id=pk.id) }}"
-                    method="POST" style="margin: 0;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button class="btn btn-ghost btn-sm" style="padding: 0.2rem 0.5rem; color: var(--accent-danger);"><i
-                            class="fa-solid fa-trash"></i></button>
-                </form>
-            </div>
-            {% endfor %}
             {% else %}
-            <div style="text-align: center; font-size: 0.9rem; color: var(--text-muted); font-style: italic;">
-                No passkeys registered.
-            </div>
-            {% endif %}
+            <div class="text-muted">No passkeys registered.</div>
+            {% endfor %}
         </div>
-
-        <div style="display: flex; gap: 0.5rem;">
-            <input type="text" id="passkey-name" placeholder="Device Name (e.g. MacBook Pro)"
-                style="flex: 1; background: var(--bg-input); border: 1px solid var(--border-subtle); color: white; padding: 0.5rem; border-radius: 6px;">
-            <button id="register-passkey" class="btn btn-primary">Add Passkey</button>
-        </div>
-        <div id="passkey-status" style="margin-top: 0.5rem; font-size: 0.8rem; height: 1.2em;"></div>
     </div>
 
-    <!-- Backup Codes -->
     <div class="card">
         <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-life-ring"></i> Recovery Codes</span>
-        </div>
-        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-            Generate printable backup codes in case you lose access to your 2FA device.
-        </p>
-        <a href="{{ url_for('dashboard.dashboard_security.show_backup_codes') }}" class="btn btn-ghost w-full">
-            <i class="fa-solid fa-file-shield"></i> View/Generate Codes
-        </a>
-    </div>
-
-    <!-- Password Change -->
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-key"></i> Change Password</span>
+            <span class="card-title"><i class="fa-solid fa-key"></i> Change password</span>
         </div>
         <form action="{{ url_for('dashboard.dashboard_security.change_password') }}" method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="mb-4">
-                <div style="position: relative; margin-bottom: 0.5rem;">
-                    <input type="password" id="current_password" name="current_password" placeholder="Current Password"
-                        required
-                        style="background: var(--bg-input); border: 1px solid var(--border-subtle); color: white; padding: 0.7rem; padding-right: 40px; border-radius: 8px; width: 100%;">
-                    <button type="button" onclick="togglePassword('current_password', this)"
-                        style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer;">
-                        <i class="fa-solid fa-eye"></i>
-                    </button>
-                </div>
-                <div style="position: relative; margin-bottom: 0.5rem;">
-                    <input type="password" id="new_password" name="new_password" placeholder="New Password" required
-                        style="background: var(--bg-input); border: 1px solid var(--border-subtle); color: white; padding: 0.7rem; padding-right: 40px; border-radius: 8px; width: 100%;">
-                    <button type="button" onclick="togglePassword('new_password', this)"
-                        style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer;">
-                        <i class="fa-solid fa-eye"></i>
-                    </button>
-                </div>
-                <div style="position: relative;">
-                    <input type="password" id="confirm_password" name="confirm_password"
-                        placeholder="Confirm New Password" required
-                        style="background: var(--bg-input); border: 1px solid var(--border-subtle); color: white; padding: 0.7rem; padding-right: 40px; border-radius: 8px; width: 100%;">
-                    <button type="button" onclick="togglePassword('confirm_password', this)"
-                        style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer;">
-                        <i class="fa-solid fa-eye"></i>
-                    </button>
-                </div>
-            </div>
-            <button class="btn btn-primary w-full">Update Password</button>
+            <label for="current_password">Current password</label>
+            <input id="current_password" name="current_password" type="password" required>
+            <label for="new_password">New password</label>
+            <input id="new_password" name="new_password" type="password" minlength="12" required>
+            <label for="confirm_password">Confirm new password</label>
+            <input id="confirm_password" name="confirm_password" type="password" minlength="12" required>
+            <button class="btn btn-primary w-full">Update password</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-user-shield"></i> Create admin</span>
+        </div>
+        <p style="color:var(--text-secondary);margin-bottom:1rem;">
+            Creating a new admin requires the server secret code generated during first-run setup.
+        </p>
+        <form action="{{ url_for('dashboard.dashboard_security.create_admin') }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="admin_email">Admin email</label>
+            <input id="admin_email" name="email" type="email" required>
+            <label for="admin_username">Display name</label>
+            <input id="admin_username" name="username" type="text" placeholder="Optional">
+            <label for="admin_password">Password</label>
+            <input id="admin_password" name="password" type="password" minlength="12" required>
+            <label for="admin_confirm_password">Confirm password</label>
+            <input id="admin_confirm_password" name="confirm_password" type="password" minlength="12" required>
+            <label for="secret_code">Server secret code</label>
+            <input id="secret_code" name="secret_code" type="password" required>
+            <button class="btn btn-primary w-full">Create admin</button>
         </form>
     </div>
 </div>
+{% endblock %}
 
-<script>
-    function togglePassword(inputId, btn) {
-        const input = document.getElementById(inputId);
-        const icon = btn.querySelector('i');
-        if (input.type === 'password') {
-            input.type = 'text';
-            icon.classList.remove('fa-eye');
-            icon.classList.add('fa-eye-slash');
-        } else {
-            input.type = 'password';
-            icon.classList.remove('fa-eye-slash');
-            icon.classList.add('fa-eye');
-        }
-    }
-</script>
-
-<!-- Passkey Script (Native WebAuthn) -->
-<script>
-    const registerBtn = document.getElementById('register-passkey');
-    const statusDiv = document.getElementById('passkey-status');
-    const nameInput = document.getElementById('passkey-name');
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-    // Base64URL helpers
-    function base64urlToArrayBuffer(base64url) {
-        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-        const padding = '='.repeat((4 - base64.length % 4) % 4);
+{% block scripts %}
+<script nonce="{{ csp_nonce|default('') }}">
+    function base64urlToArrayBuffer(value) {
+        const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = '='.repeat((4 - (base64.length % 4)) % 4);
         const binary = atob(base64 + padding);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -180,79 +117,64 @@
         return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
     }
 
-    registerBtn.addEventListener('click', async () => {
-        const name = nameInput.value.trim();
+    document.getElementById('register-passkey').addEventListener('click', async () => {
+        const status = document.getElementById('passkey-status');
+        const name = document.getElementById('passkey-name').value.trim();
         if (!name) {
-            statusDiv.innerHTML = '<span style="color:var(--accent-danger)">Device name required</span>';
+            status.textContent = 'Choose a device name first.';
             return;
         }
 
-        statusDiv.innerHTML = '<span style="color:var(--text-muted)">Waiting for authenticator...</span>';
-
         try {
-            // 1. Get Options from server
-            const optsRes = await fetch("{{ url_for('dashboard.dashboard_passkey.passkey_register_options') }}", {
-                method: 'POST',
-                headers: { 'X-CSRFToken': csrfToken }
-            });
-            const opts = await optsRes.json();
+            const optionsResponse = await fetch("{{ url_for('dashboard.dashboard_passkey.passkey_register_options') }}", { method: 'POST' });
+            const options = await optionsResponse.json();
+            if (!optionsResponse.ok) throw new Error(options.message || 'Unable to create options.');
 
-            // 2. Convert server options to WebAuthn format
-            const publicKeyOpts = {
-                challenge: base64urlToArrayBuffer(opts.challenge),
-                rp: opts.rp,
+            const publicKey = {
+                challenge: base64urlToArrayBuffer(options.challenge),
+                rp: options.rp,
                 user: {
-                    id: base64urlToArrayBuffer(opts.user.id),
-                    name: opts.user.name,
-                    displayName: opts.user.displayName
+                    ...options.user,
+                    id: base64urlToArrayBuffer(options.user.id)
                 },
-                pubKeyCredParams: opts.pubKeyCredParams,
-                timeout: opts.timeout || 60000,
-                authenticatorSelection: opts.authenticatorSelection,
-                attestation: opts.attestation || 'none'
+                pubKeyCredParams: options.pubKeyCredParams,
+                authenticatorSelection: options.authenticatorSelection,
+                timeout: options.timeout,
+                excludeCredentials: (options.excludeCredentials || []).map((credential) => ({
+                    ...credential,
+                    id: base64urlToArrayBuffer(credential.id)
+                }))
             };
 
-            if (opts.excludeCredentials) {
-                publicKeyOpts.excludeCredentials = opts.excludeCredentials.map(cred => ({
-                    id: base64urlToArrayBuffer(cred.id),
-                    type: cred.type,
-                    transports: cred.transports
-                }));
-            }
-
-            // 3. Create Credential
-            const credential = await navigator.credentials.create({ publicKey: publicKeyOpts });
-
-            // 4. Convert response for server
-            const credentialForServer = {
-                id: credential.id,
-                rawId: arrayBufferToBase64url(credential.rawId),
-                type: credential.type,
-                response: {
-                    clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
-                    attestationObject: arrayBufferToBase64url(credential.response.attestationObject)
-                }
-            };
-
-            // 5. Verify with server
-            const verifyRes = await fetch("{{ url_for('dashboard.dashboard_passkey.passkey_register_verify') }}", {
+            const credential = await navigator.credentials.create({ publicKey });
+            const verifyResponse = await fetch("{{ url_for('dashboard.dashboard_passkey.passkey_register_verify') }}", {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify({ credential: credentialForServer, name: name })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name,
+                    credential: {
+                        id: credential.id,
+                        rawId: arrayBufferToBase64url(credential.rawId),
+                        type: credential.type,
+                        response: {
+                            clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                            attestationObject: arrayBufferToBase64url(credential.response.attestationObject)
+                        }
+                    }
+                })
             });
 
-            const result = await verifyRes.json();
-            if (result.status === 'success') {
-                statusDiv.innerHTML = '<span style="color:var(--accent-success)">Passkey registered! Reloading...</span>';
-                setTimeout(() => location.reload(), 1000);
-            } else {
-                throw new Error(result.message);
-            }
-
+            const result = await verifyResponse.json();
+            if (result.status !== 'success') throw new Error(result.message || 'Registration failed.');
+            window.location.reload();
         } catch (error) {
-            console.error('Passkey Error:', error);
-            statusDiv.innerHTML = `<span style="color:var(--accent-danger)">Error: ${error.message}</span>`;
+            status.textContent = error.message;
         }
     });
+
+    async function deletePasskey(id) {
+        const response = await fetch(`/dashboard/passkey/delete/${id}`, { method: 'POST' });
+        if (response.ok) window.location.reload();
+    }
 </script>
 {% endblock %}

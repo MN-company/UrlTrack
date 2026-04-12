@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>{% block title %}UrlTrack Gate{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b1220;
+            --panel: rgba(15, 23, 42, 0.9);
+            --border: rgba(148, 163, 184, 0.18);
+            --text: #e5edf7;
+            --muted: #9fb0c8;
+            --accent: #3b82f6;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 1rem;
+            background: radial-gradient(circle at top left, rgba(59,130,246,0.18), transparent 30%), linear-gradient(135deg, var(--bg), #0f172a 65%);
+            color: var(--text);
+            font-family: Inter, sans-serif;
+        }
+        .card {
+            width: min(440px, 100%);
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            padding: 1.8rem;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+        }
+        h1 { margin: 0 0 0.75rem; font-size: 1.6rem; }
+        p { color: var(--muted); line-height: 1.55; }
+        label { display: block; margin-bottom: 0.45rem; }
+        input, button {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.9rem 1rem;
+            border-radius: 12px;
+            font-size: 1rem;
+        }
+        input {
+            margin-bottom: 1rem;
+            border: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.85);
+            color: white;
+        }
+        button {
+            border: 0;
+            background: var(--accent);
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .error {
+            margin-bottom: 1rem;
+            padding: 0.85rem 0.95rem;
+            border-radius: 12px;
+            background: rgba(239, 68, 68, 0.14);
+            color: #fecaca;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="card">
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

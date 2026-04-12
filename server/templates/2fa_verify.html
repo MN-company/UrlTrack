@@ -1,307 +1,106 @@
 {% extends "base.html" %}
 
-{% block head %}
-<style>
-    .verify-container {
-        max-width: 450px;
-        margin: 80px auto;
-        padding: 0 1rem;
-    }
-
-    .verify-card {
-        background: var(--bg-panel);
-        border: 1px solid var(--border-subtle);
-        border-radius: 12px;
-        padding: 2.5rem;
-        text-align: center;
-    }
-
-    .verify-title {
-        font-size: 1.5rem;
-        font-weight: 700;
-        margin-bottom: 10px;
-        color: var(--accent-primary);
-    }
-
-    .verify-subtitle {
-        color: var(--text-secondary);
-        margin-bottom: 30px;
-        font-size: 0.9rem;
-    }
-
-    .code-input {
-        font-size: 1.5rem;
-        text-align: center;
-        letter-spacing: 8px;
-        font-family: 'JetBrains Mono', monospace;
-        padding: 15px;
-        background: var(--bg-input);
-        border: 1px solid var(--border-subtle);
-        color: var(--text-primary);
-        border-radius: 8px;
-        width: 100%;
-    }
-
-    .code-input:focus {
-        border-color: var(--accent-primary);
-        outline: none;
-    }
-
-    .input-group {
-        margin-bottom: 1rem;
-        text-align: left;
-    }
-
-    .input-group label {
-        display: block;
-        color: var(--text-secondary);
-        margin-bottom: 0.5rem;
-        font-size: 0.9rem;
-    }
-
-    .verify-btn {
-        width: 100%;
-        padding: 15px;
-        margin-top: 15px;
-        background: var(--accent-primary);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 500;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-    }
-
-    .verify-btn:hover {
-        background: #2563eb;
-    }
-
-    .method-divider {
-        margin: 25px 0;
-        color: var(--text-muted);
-        font-size: 0.8rem;
-        text-transform: uppercase;
-    }
-
-    .backup-toggle {
-        margin-top: 15px;
-        font-size: 0.85rem;
-        color: var(--accent-primary);
-        cursor: pointer;
-    }
-
-    .backup-toggle:hover {
-        text-decoration: underline;
-    }
-
-    .backup-form {
-        display: none;
-    }
-
-    .btn-outline {
-        background: transparent;
-        color: var(--text-secondary);
-        border: 1px solid var(--border-subtle);
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        font-weight: 500;
-        cursor: pointer;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="verify-container">
-    <div class="verify-card">
-        <div style="font-size: 2.5rem; color: var(--accent); margin-bottom: 20px;">
-            <i class="fas fa-mobile-alt"></i>
+<div style="max-width:480px;margin:3rem auto;">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-shield-halved"></i> Verify second factor</span>
         </div>
+        <p style="color:var(--text-secondary);margin-bottom:1.25rem;">
+            Account: <strong>{{ email }}</strong>
+        </p>
 
-        <div class="verify-title">Two-Factor Authentication</div>
-        <div class="verify-subtitle">
-            Logged in as: <strong>{{ username }}</strong>
-        </div>
-
-        <!-- TOTP Code Form -->
         <form method="POST" id="totpForm">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-            <div class="input-group">
-                <label for="totp_code">
-                    <i class="fas fa-key"></i> Enter 6-digit code from your authenticator app
-                </label>
-                <input type="text" id="totp_code" name="totp_code" class="code-input" maxlength="6" pattern="[0-9]{6}"
-                    inputmode="numeric" autocomplete="one-time-code" required autofocus>
-            </div>
-
-            <button type="submit" class="btn verify-btn">
-                <i class="fas fa-check"></i> Verify Code
-            </button>
+            <label for="totp_code">Authenticator code</label>
+            <input id="totp_code" name="totp_code" type="text" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+            <button type="submit" class="btn btn-primary w-full">Verify code</button>
         </form>
 
-        <!-- Divider -->
-        <div class="method-divider">— OR —</div>
+        <div style="height:1px;background:var(--border-subtle);margin:1.5rem 0;"></div>
 
-        <!-- Backup Code Toggle -->
-        <div class="backup-toggle" onclick="toggleBackupForm()">
-            <i class="fas fa-life-ring"></i> Use backup code instead
-        </div>
-
-        <!-- Backup Code Form (hidden by default) -->
-        <form method="POST" id="backupForm" class="backup-form">
+        <form method="POST" id="backupForm">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-            <div class="input-group">
-                <label for="backup_code">
-                    <i class="fas fa-key"></i> Enter backup code
-                </label>
-                <input type="text" id="backup_code" name="backup_code" style="font-family: var(--font-mono);"
-                    placeholder="XXXX-XXXX-XXXX">
-            </div>
-
-            <button type="submit" class="btn verify-btn">
-                <i class="fas fa-check"></i> Use Backup Code
-            </button>
-
-            <div class="backup-toggle" onclick="toggleBackupForm()" style="margin-top: 15px;">
-                <i class="fas fa-arrow-left"></i> Back to authenticator
-            </div>
+            <label for="backup_code">Backup code</label>
+            <input id="backup_code" name="backup_code" type="text" placeholder="Paste a recovery code">
+            <button type="submit" class="btn btn-ghost w-full">Use backup code</button>
         </form>
 
-        <!-- Passkey Option (if available) -->
         {% if has_passkey %}
-        <div class="method-divider" style="margin-top: 30px;">— OR —</div>
-        <button onclick="usePasskey()" class="btn-outline" style="width: 100%; padding: 12px;">
-            <i class="fas fa-fingerprint"></i> Use Passkey / Biometric
+        <div style="height:1px;background:var(--border-subtle);margin:1.5rem 0;"></div>
+        <button type="button" onclick="usePasskey()" class="btn btn-ghost w-full">
+            <i class="fa-solid fa-fingerprint"></i> Use passkey
         </button>
         {% endif %}
-
-        <!-- Cancel Link -->
-        <div style="margin-top: 25px;">
-            <a href="/login" style="color: var(--text-muted); font-size: 0.85rem;">
-                <i class="fas fa-times"></i> Cancel & start over
-            </a>
-        </div>
     </div>
 </div>
+{% endblock %}
 
-<script>
-    function toggleBackupForm() {
-        const totpForm = document.getElementById('totpForm');
-        const backupForm = document.getElementById('backupForm');
+{% block scripts %}
+<script nonce="{{ csp_nonce|default('') }}">
+    function base64urlToArrayBuffer(value) {
+        const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+        const binary = atob(base64 + padding);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes.buffer;
+    }
 
-        if (backupForm.style.display === 'none' || !backupForm.style.display) {
-            totpForm.style.display = 'none';
-            backupForm.style.display = 'block';
-            document.getElementById('backup_code').focus();
-        } else {
-            totpForm.style.display = 'block';
-            backupForm.style.display = 'none';
-            document.getElementById('totp_code').focus();
-        }
+    function arrayBufferToBase64url(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
     }
 
     async function usePasskey() {
-        try {
-            // Check WebAuthn support
-            if (!window.PublicKeyCredential) {
-                alert('Your browser does not support passkeys.');
-                return;
-            }
+        if (!window.PublicKeyCredential) {
+            alert('This browser does not support passkeys.');
+            return;
+        }
 
-            // Get authentication options
-            const optionsResponse = await fetch('/dashboard/passkey/auth/options', {
+        try {
+            const optionsResponse = await fetch("{{ url_for('auth.passkey_auth_options') }}", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: '{{ username }}' })
+                body: JSON.stringify({ email: "{{ email }}" })
             });
-
-            if (!optionsResponse.ok) {
-                alert('No passkeys registered for this account.');
-                return;
-            }
-
             const options = await optionsResponse.json();
+            if (!optionsResponse.ok) throw new Error(options.error || 'Unable to start passkey login.');
 
-            // Convert base64 to ArrayBuffer
-            options.challenge = base64ToArrayBuffer(options.challenge);
+            options.challenge = base64urlToArrayBuffer(options.challenge);
             if (options.allowCredentials) {
-                options.allowCredentials = options.allowCredentials.map(cred => ({
-                    ...cred,
-                    id: base64ToArrayBuffer(cred.id)
+                options.allowCredentials = options.allowCredentials.map((credential) => ({
+                    ...credential,
+                    id: base64urlToArrayBuffer(credential.id)
                 }));
             }
 
-            // Get credential
-            const assertion = await navigator.credentials.get({
-                publicKey: options
-            });
-
-            // Verify with server
-            const verifyResponse = await fetch('/dashboard/passkey/auth/verify', {
+            const assertion = await navigator.credentials.get({ publicKey: options });
+            const verifyResponse = await fetch("{{ url_for('auth.passkey_auth_verify') }}", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     id: assertion.id,
-                    rawId: arrayBufferToBase64(assertion.rawId),
+                    rawId: arrayBufferToBase64url(assertion.rawId),
+                    type: assertion.type,
                     response: {
-                        authenticatorData: arrayBufferToBase64(assertion.response.authenticatorData),
-                        clientDataJSON: arrayBufferToBase64(assertion.response.clientDataJSON),
-                        signature: arrayBufferToBase64(assertion.response.signature),
-                        userHandle: assertion.response.userHandle ? arrayBufferToBase64(assertion.response.userHandle) : null
-                    },
-                    type: assertion.type
+                        authenticatorData: arrayBufferToBase64url(assertion.response.authenticatorData),
+                        clientDataJSON: arrayBufferToBase64url(assertion.response.clientDataJSON),
+                        signature: arrayBufferToBase64url(assertion.response.signature),
+                        userHandle: assertion.response.userHandle ? arrayBufferToBase64url(assertion.response.userHandle) : null
+                    }
                 })
             });
-
             const result = await verifyResponse.json();
-
-            if (result.verified) {
-                window.location.href = result.redirect;
-            } else {
-                alert('❌ Authentication failed: ' + (result.error || 'Unknown error'));
+            if (!verifyResponse.ok || !result.verified) {
+                throw new Error(result.error || 'Verification failed.');
             }
-
+            window.location.href = result.redirect;
         } catch (error) {
-            console.error('Passkey auth error:', error);
-            if (error.name === 'NotAllowedError') {
-                // User cancelled
-            } else {
-                alert('Passkey authentication failed: ' + error.message);
-            }
+            alert(error.message);
         }
     }
-
-    // Helper functions
-    function base64ToArrayBuffer(base64) {
-        const binaryString = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes.buffer;
-    }
-
-    function arrayBufferToBase64(buffer) {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    }
-
-    // Auto-submit when 6 digits entered
-    document.getElementById('totp_code').addEventListener('input', function (e) {
-        if (this.value.length === 6) {
-            setTimeout(() => {
-                document.getElementById('totpForm').submit();
-            }, 300);
-        }
-    });
 </script>
 {% endblock %}

@@ -1,18 +1,14 @@
-{% extends "base.html" %}
+{% extends "gate_base.html" %}
+
+{% block title %}Tracking Consent{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
-    <div class="card" style="text-align: center; padding: 40px; max-width: 480px; width: 100%;">
-        <h2 style="margin-bottom: 16px;">Consent Required</h2>
-        <p style="color: var(--text-sec); margin-bottom: 24px;">
-            This site uses cookies and device signals to protect links and improve security.
-            Please consent to continue.
-        </p>
-        <form method="POST" action="/consent">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="next" value="{{ next_url }}">
-            <button type="submit" class="btn" style="width: 100%;">I Consent</button>
-        </form>
-    </div>
-</div>
+<h1>Consent required</h1>
+<p>This link uses cookies and device signals for routing and fraud prevention. Consent is required before continuing.</p>
+
+<form method="POST" action="{{ url_for('public.record_consent') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <button type="submit">I consent</button>
+</form>
 {% endblock %}

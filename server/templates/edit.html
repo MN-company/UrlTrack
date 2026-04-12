@@ -95,10 +95,12 @@
                 <div style="margin-bottom:10px; color:var(--accent);">
                     {{ link.public_masked_url or "Not Masked" }}
                 </div>
+                {% if mask_with_isgd %}
                 <div class="toggle-row">
-                    <label>Regenerate Mask (is.gd)</label>
-                    <input type="checkbox" name="regenerate_mask" value="true" style="width:auto;">
+                    <label>Masking</label>
+                    <span>Controlled by MASK_WITH_ISGD</span>
                 </div>
+                {% endif %}
             </div>
         </div>
 

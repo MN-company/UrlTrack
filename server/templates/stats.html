@@ -1,66 +1,56 @@
 {% extends "base.html" %}
 
-{% block breadcrumb %}
-<a href="{{ url_for('dashboard.dashboard_links.links') }}">Campaigns</a> / Analytics
-{% endblock %}
+{% block breadcrumb %}Campaigns / Analytics{% endblock %}
 
 {% block content %}
-<div class="header" style="margin-bottom: 2rem;">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
+<div class="card" style="margin-bottom:1.5rem;">
+    <div class="card-header">
         <div>
-            <h1 style="font-size: 1.5rem; margin-bottom: 0.5rem;">
-                Campaign: <span class="text-accent text-mono">/{{ link.slug }}</span>
-            </h1>
-            <div style="font-size: 0.9rem; color: var(--text-muted);">
-                <i class="fa-solid fa-location-arrow"></i> {{ link.destination }}
-            </div>
+            <span class="card-title">Campaign /{{ link.slug }}</span>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">{{ link.destination }}</div>
         </div>
-
-        <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('dashboard.dashboard_exports.export_csv', slug=link.slug) }}" class="btn btn-ghost">
-                <i class="fa-solid fa-file-csv"></i> Export CSV
-            </a>
-            <a href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}" class="btn btn-primary">
-                <i class="fa-solid fa-sliders"></i> Edit Settings
-            </a>
+        <div style="display:flex;gap:0.5rem;">
+            <a href="{{ url_for('dashboard.dashboard_exports.export_csv', slug=link.slug) }}" class="btn btn-ghost">CSV</a>
+            <a href="{{ url_for('dashboard.dashboard_exports.export_json', slug=link.slug) }}" class="btn btn-ghost">JSON</a>
+            <a href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}" class="btn btn-primary">Edit</a>
         </div>
+    </div>
+    <div class="dashboard-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="toggle-row"><label>Total visits</label><span>{{ visits|length }}</span></div>
+        <div class="toggle-row"><label>Email captures</label><span>{{ visits | selectattr('email') | list | length }}</span></div>
+        <div class="toggle-row"><label>Top countries</label><span>{{ top_countries|length }}</span></div>
+        <div class="toggle-row"><label>Top referrers</label><span>{{ top_referrers|length }}</span></div>
     </div>
 </div>
 
-<!-- Main Stats Grid -->
 <div class="dashboard-grid" style="grid-template-columns: 2fr 1fr;">
-
-    <!-- Traffic Chart -->
     <div class="card glass">
         <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-chart-area"></i> Traffic (7 Days)</span>
-            <div class="stat-trend trend-up">
-                {{ visits|length }} Total Hits
-            </div>
+            <span class="card-title"><i class="fa-solid fa-chart-area"></i> Visits in last 7 days</span>
         </div>
-        <div style="height: 300px; width: 100%;">
-            <canvas id="clicksChart"></canvas>
+        <div style="height:320px;">
+            <canvas id="visits-chart"></canvas>
         </div>
     </div>
 
-    <!-- Top Locations -->
     <div class="card">
         <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-earth-americas"></i> Top Regions</span>
+            <span class="card-title"><i class="fa-solid fa-earth-americas"></i> Top countries</span>
         </div>
         <table class="data-table">
             <tbody>
                 {% for country, code, count in top_countries %}
                 <tr>
-                    <td style="padding: 0.75rem;">
+                    <td>
                         {% if code %}
-                        <img src="https://flagcdn.com/16x12/{{ code|lower }}.png" style="margin-right:0.5rem;"
-                            onerror="this.style.display='none';">
+                        <img src="https://flagcdn.com/16x12/{{ code|lower }}.png" alt="{{ country }}">
                         {% endif %}
-                        {{ country }}
+                        {{ country or 'Unknown' }}
                     </td>
-                    <td style="text-align: right; font-weight: 600;">{{ count }}</td>
+                    <td style="text-align:right;">{{ count }}</td>
                 </tr>
+                {% else %}
+                <tr><td colspan="2">No country data yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -68,158 +58,95 @@
 </div>
 
 <div class="dashboard-grid" style="grid-template-columns: 1fr 2fr;">
-    <!-- Referrers -->
     <div class="card">
         <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-share-nodes"></i> Top Sources</span>
+            <span class="card-title"><i class="fa-solid fa-share-nodes"></i> Referrers</span>
         </div>
         <table class="data-table">
             <tbody>
-                {% for ref, count in top_referrers %}
+                {% for referrer, count in top_referrers %}
                 <tr>
-                    <td style="padding: 0.75rem; font-size: 0.85rem; word-break: break-all;">
-                        {{ ref[:30] }}{% if ref|length > 30 %}...{% endif %}
-                    </td>
-                    <td style="text-align: right; font-weight: 600;">{{ count }}</td>
+                    <td style="word-break:break-all;">{{ referrer or 'Direct' }}</td>
+                    <td style="text-align:right;">{{ count }}</td>
                 </tr>
+                {% else %}
+                <tr><td colspan="2">No referrer data yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-    <!-- Detailed Log -->
     <div class="card">
         <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-list-ul"></i> Intercept Log (Last 100)</span>
+            <span class="card-title"><i class="fa-solid fa-list-ul"></i> Visit log</span>
         </div>
-        <div style="overflow-x: auto;">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Visitor</th>
-                        <th>Fingerprint</th>
-                        <th>Risk</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for v in visits %}
-                    <tr>
-                        <td class="text-mono" style="font-size: 0.8rem; color: var(--text-muted);">
-                            {{ v.timestamp.strftime('%H:%M:%S') }} <br>
-                            <span style="font-size: 0.7rem;">{{ v.timestamp.strftime('%d/%m') }}</span>
-                        </td>
-                        <td>
-                            <div style="font-weight: 600;">{{ v.ip_address }}</div>
-                            <div style="font-size: 0.8rem;">
-                                {% if v.email %}
-                                <a href="{{ url_for('dashboard.dashboard_leads.contacts') }}" class="text-accent">{{
-                                    v.email }}</a>
-                                {% else %}
-                                <span class="text-muted">{{ v.isp or 'Unknown ISP' }}</span>
-                                {% endif %}
-                            </div>
-                            {% if v.city %}
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">
-                                📍 {{ v.city }}
-                            </div>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if v.ai_summary %}
-                            <div style="font-size: 0.8rem; color: var(--text-primary); margin-bottom: 0.25rem;">
-                                <i class="fa-solid fa-microchip"></i> {{ v.ai_summary }}
-                            </div>
-                            {% else %}
-                            <div style="font-size: 0.8rem; color: var(--text-secondary);">
-                                {{ v.os_family }} / {{ v.device_type }}
-                            </div>
-                            {% endif %}
-
-                            <div style="display:flex; gap: 0.5rem; margin-top: 0.25rem;">
-                                {% if v.canvas_hash %}
-                                <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=v.canvas_hash) }}"
-                                    class="badge badge-purple" style="font-size: 0.7rem; text-decoration: none;">
-                                    #{{ v.canvas_hash[:6] }}
-                                </a>
-                                {% endif %}
-                            </div>
-                        </td>
-                        <td>
-                            {% if v.is_vpn or v.is_proxy %}
-                            <span class="badge badge-danger">VPN</span>
-                            {% elif v.is_hosting %}
-                            <span class="badge badge-warning">Hosting</span>
-                            {% elif v.is_suspicious %}
-                            <span class="badge badge-danger">Blocked</span>
-                            {% elif v.adblock %}
-                            <span class="badge badge-warning">AdBlock</span>
-                            {% else %}
-                            <span class="badge badge-success">Clean</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Visitor</th>
+                    <th>Fingerprint</th>
+                    <th>Risk</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for visit in visits %}
+                <tr>
+                    <td class="text-mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <div>{{ visit.email or visit.ip_address }}</div>
+                        <div style="font-size:0.8rem;color:var(--text-secondary);">{{ visit.city or 'Unknown' }}{% if visit.country %}, {{ visit.country }}{% endif %}</div>
+                    </td>
+                    <td>
+                        {% if visit.canvas_hash %}
+                        <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.canvas_hash) }}" class="text-accent">#{{ visit.canvas_hash[:10] }}</a>
+                        {% elif visit.etag %}
+                        <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.etag) }}" class="text-accent">#{{ visit.etag[:10] }}</a>
+                        {% else %}
+                        <span class="text-muted">None</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if visit.is_suspicious %}
+                        <span class="badge badge-danger">Suspicious</span>
+                        {% elif visit.is_vpn or visit.is_proxy %}
+                        <span class="badge badge-warning">VPN/Proxy</span>
+                        {% else %}
+                        <span class="badge badge-success">Clean</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4">No visits recorded yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
+{% endblock %}
 
-<!-- Chart Config -->
-<script>
-    const ctx = document.getElementById('clicksChart').getContext('2d');
-    const labels = {{ chart_labels | tojson }};
-    const data = {{ chart_values | tojson }};
-
-    // Gradient
-    let gradient = ctx.createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.5)'); // Blue
-    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.05)');
-
+{% block scripts %}
+<script nonce="{{ csp_nonce|default('') }}">
+    const ctx = document.getElementById('visits-chart').getContext('2d');
     new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels,
+            labels: {{ chart_labels | tojson }},
             datasets: [{
-                label: 'Clicks',
-                data: data,
+                data: {{ chart_values | tojson }},
                 borderColor: '#3b82f6',
-                backgroundColor: gradient,
-                borderWidth: 2,
-                tension: 0.4,
-                fill: true,
-                pointBackgroundColor: '#1f2937',
-                pointBorderColor: '#3b82f6',
-                pointRadius: 4,
-                pointHoverRadius: 6
+                backgroundColor: 'rgba(59,130,246,0.16)',
+                tension: 0.35,
+                fill: true
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: '#1f2937',
-                    titleColor: '#f9fafb',
-                    bodyColor: '#9ca3af',
-                    borderColor: '#374151',
-                    borderWidth: 1,
-                    padding: 10,
-                    displayColors: false,
-                }
-            },
+            plugins: { legend: { display: false } },
             scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(55, 65, 81, 0.5)' },
-                    ticks: { color: '#9ca3af', font: { family: 'Inter' } }
-                },
-                x: {
-                    grid: { display: false },
-                    ticks: { color: '#9ca3af', font: { family: 'Inter' } }
-                }
+                y: { beginAtZero: true },
+                x: { grid: { display: false } }
             }
         }
     });

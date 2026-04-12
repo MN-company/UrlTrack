@@ -1,85 +1,71 @@
-from flask import Blueprint, render_template, request, redirect, flash, url_for, jsonify
-from flask_login import login_required
 import json
-import re
 
-from ...models import Lead, Visit
-from ...extensions import db, log_queue
+from flask import Blueprint, Response, jsonify, redirect, render_template, request, stream_with_context, url_for
+from flask_login import login_required
 
 from ...config import Config
+from ...models import Link, Visit
+from ...services.ai_service import AIService
 
-bp = Blueprint('dashboard_ai', __name__)
 
-@bp.route('/ai/console')
+bp = Blueprint("dashboard_ai", __name__)
+
+
+def _extract_message():
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        return (payload.get("message") or "").strip()
+    return (request.form.get("message") or request.args.get("message") or "").strip()
+
+
+@bp.route("/ai/console")
 @login_required
 def ai_console():
-    """Unified AI console with @mention context system."""
-    # Get stats
-    leads_with_ai = Lead.query.filter(Lead.custom_fields.like('%ai_identity%')).all()
-    leads_pending = Lead.query.filter(
-        db.or_(
-            Lead.custom_fields == None,
-            Lead.custom_fields == '{}',
-            ~Lead.custom_fields.like('%ai_identity%')
-        )
-    ).all()
-    
-    recent_leads = Lead.query.order_by(Lead.created_at.desc()).limit(10).all()
-    
-    return render_template('ai_console.html',
-                          analyzed_count=len(leads_with_ai),
-                          pending_count=len(leads_pending),
-                          recent_leads=recent_leads)
+    return render_template(
+        "ai_console.html",
+        model_name=Config.GEMINI_MODEL,
+        total_visits=Visit.query.count(),
+        total_links=Link.query.count(),
+        identified_visits=Visit.query.filter(Visit.email.isnot(None)).count(),
+        recent_visits=Visit.query.order_by(Visit.timestamp.desc()).limit(8).all(),
+    )
 
-@bp.route('/ai/console/send', methods=['POST'])
+
+@bp.route("/ai/console/send", methods=["POST"])
 @login_required
 def ai_console_send():
-    """Process AI message using AIService."""
-    # Support both JSON (from chat) and form data
-    if request.is_json:
-        data = request.get_json()
-        message = data.get('message', '') if data else ''
-    else:
-        message = request.form.get('message', '')
-    
+    message = _extract_message()
     if not message:
-        return jsonify({'error': 'No message'}), 400
-    
+        return jsonify({"error": "No message provided."}), 400
     try:
-        from ...services.ai_service import AIService
-        result = AIService.generate_response(message)
-        return jsonify(result)
-        
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400 # Config error
-    except Exception as e:
-        return jsonify({'error': f"AI Service Error: {str(e)}"}), 500
+        return jsonify(AIService.generate_response(message))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": f"AI service error: {exc}"}), 500
 
-# Legacy routes redirect to console
-@bp.route('/ai')
+
+@bp.route("/ai/console/stream", methods=["POST", "GET"])
+@login_required
+def ai_console_stream():
+    message = _extract_message()
+    if not message:
+        return jsonify({"error": "No message provided."}), 400
+
+    def generate():
+        yield f"data: {json.dumps({'type': 'meta', 'model': Config.GEMINI_MODEL})}\n\n"
+        try:
+            for chunk in AIService.generate_stream_response(message):
+                yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream")
+
+
+@bp.route("/ai")
 @login_required
 def ai_dashboard():
-    """Redirect to unified console."""
-    return redirect(url_for('dashboard.dashboard_ai.ai_console'))
-
-
-
-@bp.route('/ai/auto_tag', methods=['POST'])
-@login_required
-def ai_auto_tag():
-    """V33: Trigger AI Auto-Tagging for a lead."""
-    lead_id = request.form.get('lead_id')
-    if lead_id:
-        log_queue.put({'type': 'ai_auto_tag', 'lead_id': int(lead_id)})
-        flash('AI Auto-Tagging queued.', 'success')
-    return redirect(request.referrer or url_for('dashboard.dashboard_ai.ai_console'))
-
-@bp.route('/ai/auto_tag_all', methods=['POST'])
-@login_required
-def ai_auto_tag_all():
-    """Queue AI auto-tagging for all leads."""
-    leads = Lead.query.all()
-    for lead in leads:
-        log_queue.put({'type': 'ai_auto_tag', 'lead_id': lead.id})
-    flash(f'Queued {len(leads)} leads for AI auto-tagging.', 'success')
-    return redirect(url_for('dashboard.dashboard_ai.ai_console'))
+    return redirect(url_for("dashboard.dashboard_ai.ai_console"))

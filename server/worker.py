@@ -1,148 +1,107 @@
+import atexit
 import threading
-import os
 import time
-from .extensions import log_queue, db
-from .models import Visit, Lead
+from datetime import datetime, timedelta
+
 from .config import Config
-from datetime import datetime
-import json
+from .extensions import db, log_queue
+from .models import Visit
+
+
+STOP_SENTINEL = {"type": "__stop__"}
+_worker_started = False
+_worker_lock = threading.Lock()
+
+
+def _cleanup_visits(app):
+    while True:
+        try:
+            if Config.VISIT_RETENTION_DAYS > 0:
+                cutoff = datetime.utcnow() - timedelta(days=Config.VISIT_RETENTION_DAYS)
+                with app.app_context():
+                    deleted = Visit.query.filter(Visit.timestamp < cutoff).delete()
+                    if deleted:
+                        db.session.commit()
+                        print(f"Retention cleanup deleted {deleted} visits")
+        except Exception as exc:
+            print(f"Retention cleanup error: {exc}")
+            db.session.rollback()
+        time.sleep(6 * 3600)
+
+
+def _handle_task(app, task):
+    try:
+        with app.app_context():
+            if task.get("type") == "enrich_visit":
+                visit = db.session.get(Visit, task.get("visit_id"))
+                if visit is None:
+                    return
+
+                from .utils import get_geo_data, get_reverse_dns
+
+                ip_address = task.get("ip")
+                if ip_address:
+                    hostname = get_reverse_dns(ip_address)
+                    if hostname:
+                        visit.hostname = hostname
+
+                    geo_data = get_geo_data(ip_address)
+                    visit.is_vpn = bool(geo_data.get("proxy"))
+                    visit.is_proxy = bool(geo_data.get("proxy"))
+                    visit.is_hosting = bool(geo_data.get("hosting"))
+                    visit.is_mobile = bool(geo_data.get("mobile"))
+                    if not visit.isp:
+                        visit.isp = geo_data.get("isp")
+                    if not visit.org:
+                        visit.org = geo_data.get("org")
+
+                if not visit.email and visit.canvas_hash:
+                    match = (
+                        Visit.query.filter(Visit.canvas_hash == visit.canvas_hash, Visit.email.isnot(None))
+                        .order_by(Visit.timestamp.desc())
+                        .first()
+                    )
+                    if match:
+                        visit.email = match.email
+                db.session.commit()
+            else:
+                print(f"Worker ignored unknown task type: {task.get('type')}")
+    except Exception as exc:
+        print(f"Worker task error: {exc}")
+        db.session.rollback()
+    finally:
+        db.session.remove()
+
+
+def _worker_loop(app):
+    while True:
+        try:
+            task = log_queue.get()
+            if task == STOP_SENTINEL or task is None:
+                log_queue.task_done()
+                break
+            _handle_task(app, task)
+            log_queue.task_done()
+        except Exception as exc:
+            print(f"Worker loop error: {exc}")
+            db.session.rollback()
+            db.session.remove()
+
 
 def start_worker(app):
-    """Starts the background worker thread with app context."""
-    print("Worker started...")
+    global _worker_started
+    with _worker_lock:
+        if _worker_started:
+            return
+        _worker_started = True
 
-    def cleanup_loop():
-        """Periodic cleanup for data retention."""
-        while True:
-            try:
-                if Config.VISIT_RETENTION_DAYS and Config.VISIT_RETENTION_DAYS > 0:
-                    cutoff = datetime.utcnow().timestamp() - (Config.VISIT_RETENTION_DAYS * 86400)
-                    with app.app_context():
-                        cutoff_dt = datetime.utcfromtimestamp(cutoff)
-                        deleted = Visit.query.filter(Visit.timestamp < cutoff_dt).delete()
-                        if deleted:
-                            db.session.commit()
-                            print(f"Retention cleanup: deleted {deleted} visits")
-                time.sleep(6 * 3600)
-            except Exception as e:
-                print(f"Retention cleanup error: {e}")
-                time.sleep(6 * 3600)
-    
-    def handle_task(task):
-        """Core logic for processing a single task."""
+    threading.Thread(target=_worker_loop, args=(app,), daemon=True).start()
+    threading.Thread(target=_cleanup_visits, args=(app,), daemon=True).start()
+
+    def _shutdown():
         try:
-            with app.app_context():
-                if task['type'] == 'enrich_visit':
-                    visit_id = task.get('visit_id')
-                    ip = task.get('ip')
-                    
-                    visit = Visit.query.get(visit_id)
-                    if visit:
-                        # Reverse DNS
-                        from .utils import get_reverse_dns, get_geo_data
-                        hostname = get_reverse_dns(ip)
-                        if hostname:
-                            visit.hostname = hostname
-                        
-                        # VPN/Proxy Detection from ip-api.com
-                        geo_data = get_geo_data(ip)
-                        if geo_data:
-                            visit.is_vpn = geo_data.get('proxy', False)
-                            visit.is_proxy = geo_data.get('proxy', False)
-                            visit.is_hosting = geo_data.get('hosting', False)
-                            visit.is_mobile = geo_data.get('mobile', False)
-                            # Also update ISP/org if missing
-                            if not visit.isp:
-                                visit.isp = geo_data.get('isp')
-                            if not visit.org:
-                                visit.org = geo_data.get('org')
-                            
-                        # Ghost Correlation
-                        if not visit.email and visit.canvas_hash:
-                            ch = visit.canvas_hash
-                            match = Visit.query.filter(Visit.canvas_hash == ch, Visit.email != None).order_by(Visit.timestamp.desc()).first()
-                            if match:
-                                visit.email = match.email
-                                print(f"👻 GHOST CORRELATION: Anonymous user identified as {match.email}")
-                                
-                        db.session.commit()
+            log_queue.put(STOP_SENTINEL)
+        except Exception:
+            pass
 
-
-
-
-
-                # V33: AI Auto-Tagging
-                elif task['type'] == 'ai_auto_tag':
-                    lead_id = task.get('lead_id')
-                    lead = Lead.query.get(lead_id)
-                    if lead and Config.GEMINI_API_KEY:
-                        try:
-                            email = lead.email
-                            visits = Visit.query.filter_by(email=email).all()
-                            
-                            # Gather context
-                            countries = list(set([v.country for v in visits if v.country]))
-                            devices = list(set([v.device_type for v in visits if v.device_type]))
-                            orgs = list(set([v.org for v in visits if v.org]))
-                            hostnames = [v.hostname for v in visits if v.hostname]
-                            
-                            # Check email domain
-                            domain = email.split('@')[1] if '@' in email else ''
-                            is_corporate = not any(x in domain for x in ['gmail', 'yahoo', 'hotmail', 'outlook', 'icloud', 'proton'])
-                            
-                            from .services.ai_service import AIService
-                            
-                            prompt = f"""You are a lead classification AI. Based on this data, suggest 2-4 short tags (one word each, comma separated).
-
-EMAIL: {email}
-CORPORATE EMAIL: {is_corporate}
-COUNTRIES: {countries}
-DEVICES: {devices}
-ORGANIZATIONS: {orgs}
-HOSTNAMES: {hostnames[:3]}
-CURRENT TAGS: {lead.tags or 'none'}
-
-Suggest tags like: VIP, Corporate, Mobile, Italian, US, TechUser, Suspicious, Anonymous, HighValue, Returning, etc.
-Output ONLY the tags, comma separated, nothing else."""
-
-                            new_tags = AIService.generate(prompt)
-                            
-                            # Parse and merge tags
-                            new_tags = new_tags.strip()
-                            existing = set([t.strip() for t in (lead.tags or '').split(',') if t.strip()])
-                            suggested = set([t.strip() for t in new_tags.split(',') if t.strip()])
-                            merged = existing.union(suggested)
-                            
-                            lead.tags = ', '.join(sorted(merged))
-                            db.session.commit()
-                            print(f"AI AUTO-TAG: {email} -> {lead.tags}")
-                            
-                        except Exception as e:
-                            print(f"AI Auto-Tag Error: {e}")
-
-
-
-        except Exception as e:
-            print(f"Worker Error: {e}")
-            
-    def worker():
-        while True:
-            try:
-                task = log_queue.get()
-                if task is None:
-                    break
-                
-                # Heavy Task Check
-                is_heavy = task.get('type') in ['ai_analyze', 'ai_auto_tag']
-                
-                if is_heavy:
-                    threading.Thread(target=handle_task, args=(task,)).start()
-                else:
-                    handle_task(task)
-                    
-                log_queue.task_done()
-            except Exception as e:
-                print(f"Worker Loop Error: {e}")
-
-    threading.Thread(target=worker, daemon=True).start()
-    threading.Thread(target=cleanup_loop, daemon=True).start()
+    atexit.register(_shutdown)

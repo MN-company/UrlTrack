@@ -1,334 +1,262 @@
-from flask import Blueprint, render_template, request, redirect, flash, url_for, make_response, current_app
-import os
-from flask_login import login_required, current_user
-import hashlib
 import io
+from pathlib import Path
+
 import segno
+from flask import Blueprint, current_app, flash, make_response, redirect, render_template, request, url_for
+from flask_login import login_required
+from sqlalchemy import distinct, func
 
-from ...models import Link, Visit
-from ...extensions import db
 from ...config import Config
-from ...utils import generate_slug, shorten_with_isgd
-from ...validators import parse_bool, validate_slug, normalize_destination_url, normalize_optional_url
+from ...extensions import cache, db
+from ...models import Link, Visit
+from ...utils import sanitize, shorten_with_isgd
+from ...validators import normalize_destination_url, normalize_optional_url, parse_bool, validate_slug
 
-bp = Blueprint('dashboard_links', __name__)
 
-@bp.route('/')
-@bp.route('')
+bp = Blueprint("dashboard_links", __name__)
+
+
+def _mask_url_for_link(slug: str) -> str | None:
+    if not Config.MASK_WITH_ISGD:
+        return None
+    full_url = f"{Config.SERVER_URL.rstrip('/')}/{slug}"
+    return shorten_with_isgd(full_url)
+
+
+def _invalidate_link_cache(slug: str) -> None:
+    cache.delete(f"link:{slug}")
+
+
+def _link_form_values(form):
+    return {
+        "destination": normalize_destination_url(sanitize(form.get("destination"), 2048)),
+        "ios_url": normalize_optional_url(sanitize(form.get("ios_url"), 2048)),
+        "android_url": normalize_optional_url(sanitize(form.get("android_url"), 2048)),
+        "safe_url": normalize_optional_url(sanitize(form.get("safe_url"), 2048)),
+        "block_bots": parse_bool(form.get("block_bots")) or "block_bots" in form,
+        "block_vpn": parse_bool(form.get("block_vpn")) or "block_vpn" in form,
+        "block_adblock": parse_bool(form.get("block_adblock")) or "block_adblock" in form,
+        "allow_no_js": parse_bool(form.get("allow_no_js")) or "allow_no_js" in form,
+        "enable_captcha": parse_bool(form.get("enable_captcha")) or "enable_captcha" in form,
+        "require_email": parse_bool(form.get("require_email")) or "require_email" in form,
+        "email_policy": sanitize(form.get("email_policy"), 20) or "all",
+        "allowed_countries": sanitize(form.get("allowed_countries"), 50).upper() or None,
+        "schedule_timezone": sanitize(form.get("schedule_timezone"), 64) or "UTC",
+        "schedule_start_hour": int(form.get("schedule_start_hour")) if sanitize(form.get("schedule_start_hour"), 2) else None,
+        "schedule_end_hour": int(form.get("schedule_end_hour")) if sanitize(form.get("schedule_end_hour"), 2) else None,
+        "max_clicks": int(sanitize(form.get("max_clicks"), 10) or 0),
+        "expiration_minutes": int(sanitize(form.get("expiration_minutes"), 10) or 0),
+    }
+
+
+@bp.route("/")
+@bp.route("")
 @login_required
 def dashboard_home():
-    """Command Center / Main Dashboard"""
-    try:
-        from ...models import Lead
-        
-        # Get data for Command Center
-        links = Link.query.order_by(Link.created_at.desc()).all()
-        visits = Visit.query.order_by(Visit.timestamp.desc()).limit(50).all()
-        leads = Lead.query.all()
-        
-        return render_template('dashboard.html', 
-                              links=links,
-                              visits=visits,
-                              leads=leads, 
-                              server_url=Config.SERVER_URL)
-    except Exception as e:
-        print(f"DASHBOARD ERROR: {e}")
-        return f"Dashboard Error: {e}", 500
+    links = Link.query.order_by(Link.created_at.desc()).all()
+    visits = Visit.query.order_by(Visit.timestamp.desc()).limit(25).all()
+    identified_visitors = (
+        db.session.query(func.count(distinct(Visit.email)))
+        .filter(Visit.email.isnot(None))
+        .scalar()
+        or 0
+    )
+    return render_template(
+        "dashboard.html",
+        links=links,
+        visits=visits,
+        identified_visitors=identified_visitors,
+        total_visits=Visit.query.count(),
+    )
 
-@bp.route('/links')
+
+@bp.route("/links")
 @login_required
 def links():
-    """Campaigns List"""
-    links = Link.query.order_by(Link.created_at.desc()).all()
-    return render_template('links.html', links=links)
+    return render_template("links.html", links=Link.query.order_by(Link.created_at.desc()).all())
 
-@bp.route('/create', methods=['POST'])
+
+@bp.route("/create", methods=["POST"])
 @login_required
 def create_link():
-    dest_raw = request.form.get('destination')
-    slug = request.form.get('slug')
-    
-    if not dest_raw:
-        flash('Destination required', 'error')
-        return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+    slug = sanitize(request.form.get("slug"), 20)
+    destination = sanitize(request.form.get("destination"), 2048)
 
-    try:
-        dest = normalize_destination_url(dest_raw)
-    except ValueError as e:
-        flash(str(e), 'error')
-        return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+    if not destination:
+        flash("Destination is required.", "error")
+        return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
     if not slug:
-        for _ in range(5):
-            slug = generate_slug()
-            if not Link.query.filter_by(slug=slug).first() and slug.lower() not in Config.RESERVED_SLUGS:
+        from ...utils import generate_slug
+
+        for _ in range(10):
+            candidate = generate_slug()
+            if validate_slug(candidate, Config.RESERVED_SLUGS) is None and not Link.query.filter_by(slug=candidate).first():
+                slug = candidate
                 break
-        else:
-            flash('Unable to generate a unique slug. Try again.', 'error')
-            return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
-    else:
-        slug_error = validate_slug(slug, Config.RESERVED_SLUGS)
-        if slug_error:
-            flash(slug_error, 'error')
-            return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+    error = validate_slug(slug, Config.RESERVED_SLUGS)
+    if error:
+        flash(error, "error")
+        return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
     if Link.query.filter_by(slug=slug).first():
-        flash('Slug exists', 'error')
-        return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+        flash("Slug already exists.", "error")
+        return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
-    new_link = Link(
-        destination=dest, 
-        slug=slug, 
-        block_bots=parse_bool(request.form.get('block_bots')), 
-        block_vpn=parse_bool(request.form.get('block_vpn')),
-        enable_captcha=parse_bool(request.form.get('enable_captcha')),
-        require_email=parse_bool(request.form.get('require_email')),
-        email_policy=request.form.get('email_policy', 'all')
-    )
-    
-    if request.form.get('mask_url'):
-         full_url = f"{Config.SERVER_URL}/{slug}"
-         masked = shorten_with_isgd(full_url)
-         if masked: new_link.public_masked_url = masked
+    try:
+        link = Link(
+            slug=slug,
+            destination=normalize_destination_url(destination),
+            enable_captcha=parse_bool(request.form.get("enable_captcha")),
+            require_email=parse_bool(request.form.get("require_email")),
+            email_policy=sanitize(request.form.get("email_policy"), 20) or "all",
+            block_bots=True,
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
-    db.session.add(new_link)
+    link.public_masked_url = _mask_url_for_link(slug)
+    db.session.add(link)
     db.session.commit()
-    flash(f'Link created: /{slug}', 'success')
-    return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+    flash(f"Link created: /{slug}", "success")
+    return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
-@bp.route('/create_full', methods=['GET', 'POST'])
+
+@bp.route("/create_full", methods=["GET", "POST"])
 @login_required
 def create_full():
-    """Full link creation form with all options."""
-    if request.method == 'POST':
-        dest_raw = request.form.get('destination')
-        slug = request.form.get('slug')
-        
-        if not dest_raw:
-            flash('Destination required', 'error')
-            return redirect(url_for('dashboard.dashboard_links.create_full'))
-
-        try:
-            dest = normalize_destination_url(dest_raw)
-        except ValueError as e:
-            flash(str(e), 'error')
-            return redirect(url_for('dashboard.dashboard_links.create_full'))
+    if request.method == "POST":
+        slug = sanitize(request.form.get("slug"), 20)
         if not slug:
-            for _ in range(5):
-                slug = generate_slug()
-                if not Link.query.filter_by(slug=slug).first() and slug.lower() not in Config.RESERVED_SLUGS:
+            from ...utils import generate_slug
+
+            for _ in range(10):
+                candidate = generate_slug()
+                if validate_slug(candidate, Config.RESERVED_SLUGS) is None and not Link.query.filter_by(slug=candidate).first():
+                    slug = candidate
                     break
-            else:
-                flash('Unable to generate a unique slug. Try again.', 'error')
-                return redirect(url_for('dashboard.dashboard_links.create_full'))
-        else:
-            slug_error = validate_slug(slug, Config.RESERVED_SLUGS)
-            if slug_error:
-                flash(slug_error, 'error')
-                return redirect(url_for('dashboard.dashboard_links.create_full'))
+        error = validate_slug(slug, Config.RESERVED_SLUGS)
+        if error:
+            flash(error, "error")
+            return redirect(url_for("dashboard.dashboard_links.create_full"))
         if Link.query.filter_by(slug=slug).first():
-            flash('Slug exists', 'error')
-            return redirect(url_for('dashboard.dashboard_links.create_full'))
-        
+            flash("Slug already exists.", "error")
+            return redirect(url_for("dashboard.dashboard_links.create_full"))
+
         try:
-            ios_url = normalize_optional_url(request.form.get('ios_url'))
-            android_url = normalize_optional_url(request.form.get('android_url'))
-            safe_url = normalize_optional_url(request.form.get('safe_url'))
-        except ValueError as e:
-            flash(str(e), 'error')
-            return redirect(url_for('dashboard.dashboard_links.create_full'))
+            values = _link_form_values(request.form)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("dashboard.dashboard_links.create_full"))
 
-        new_link = Link(
-            destination=dest,
-            slug=slug,
-            block_bots=parse_bool(request.form.get('block_bots')),
-            block_vpn=parse_bool(request.form.get('block_vpn')),
-            block_adblock=parse_bool(request.form.get('block_adblock')),
-            enable_captcha=parse_bool(request.form.get('enable_captcha')),
-            require_email=parse_bool(request.form.get('require_email')),
-            email_policy=request.form.get('email_policy', 'all'),
-            ios_url=ios_url,
-            android_url=android_url,
-            safe_url=safe_url,
-            allowed_countries=request.form.get('allowed_countries') or None,
-            schedule_start_hour=int(request.form.get('schedule_start_hour')) if request.form.get('schedule_start_hour') else None,
-            schedule_end_hour=int(request.form.get('schedule_end_hour')) if request.form.get('schedule_end_hour') else None,
-            schedule_timezone=request.form.get('schedule_timezone') or 'UTC',
-            max_clicks=int(request.form.get('max_clicks') or 0),
-            expiration_minutes=int(request.form.get('expiration_minutes') or 0)
-        )
-        
-        # Password
-        if request.form.get('password'):
-            new_link.password_hash = hashlib.sha256(request.form.get('password').encode()).hexdigest()
-        
-        # Mask URL
-        if request.form.get('mask_link'):
-            full_url = f"{Config.SERVER_URL}/{slug}"
-            masked = shorten_with_isgd(full_url)
-            if masked: new_link.public_masked_url = masked
-        
-        db.session.add(new_link)
+        link = Link(slug=slug, **values)
+        password = request.form.get("password", "")
+        if sanitize(password, 255):
+            import hashlib
+
+            link.password_hash = hashlib.sha256(password.encode()).hexdigest()
+        link.public_masked_url = _mask_url_for_link(slug)
+        db.session.add(link)
         db.session.commit()
-        flash(f'Link created: /{slug}', 'success')
-        return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
-    
-    return render_template('create_full.html', server_url=Config.SERVER_URL)
+        flash(f"Link created: /{slug}", "success")
+        return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
-@bp.route('/delete/<int:id>', methods=['POST'])
+    return render_template("create_full.html", mask_with_isgd=Config.MASK_WITH_ISGD)
+
+
+@bp.route("/delete/<int:link_id>", methods=["POST"])
 @login_required
-def delete_link(id):
-    link = Link.query.get(id)
-    if link:
-        Visit.query.filter_by(link_id=link.id).delete()
+def delete_link(link_id: int):
+    link = db.session.get(Link, link_id)
+    if link is not None:
+        slug = link.slug
         db.session.delete(link)
         db.session.commit()
-        flash('Link deleted', 'success')
-    return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
+        _invalidate_link_cache(slug)
+        flash("Link deleted.", "success")
+    return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
-@bp.route('/edit/<slug>', methods=['GET', 'POST'])
+
+@bp.route("/edit/<slug>", methods=["GET", "POST"])
 @login_required
-def edit_link(slug):
+def edit_link(slug: str):
     link = Link.query.filter_by(slug=slug).first_or_404()
-    
-    if request.method == 'POST':
-        # General
-        dest_raw = request.form.get('destination')
-        try:
-            link.destination = normalize_destination_url(dest_raw)
-        except ValueError as e:
-            flash(str(e), 'error')
-            return redirect(url_for('dashboard.dashboard_links.edit_link', slug=slug))
-        
-        # Targeting
-        try:
-            link.ios_url = normalize_optional_url(request.form.get('ios_url'))
-            link.android_url = normalize_optional_url(request.form.get('android_url'))
-            link.safe_url = normalize_optional_url(request.form.get('safe_url'))
-        except ValueError as e:
-            flash(str(e), 'error')
-            return redirect(url_for('dashboard.dashboard_links.edit_link', slug=slug))
-        
-        # Protection - checkboxes send value only when checked
-        link.block_bots = 'block_bots' in request.form
-        link.block_vpn = 'block_vpn' in request.form
-        link.block_adblock = 'block_adblock' in request.form
-        link.allow_no_js = 'allow_no_js' in request.form
-        link.enable_captcha = 'enable_captcha' in request.form
-        link.require_email = 'require_email' in request.form
-        link.email_policy = request.form.get('email_policy', 'all')
-        link.allowed_countries = request.form.get('allowed_countries') or None
-        
-        # Password
-        password = request.form.get('password')
-        if password and password.strip():
-            link.password_hash = hashlib.sha256(password.encode()).hexdigest()
-        elif request.form.get('remove_password'):
-            link.password_hash = None
-        
-        # Scheduling
-        start_hour = request.form.get('schedule_start_hour')
-        end_hour = request.form.get('schedule_end_hour')
-        link.schedule_start_hour = int(start_hour) if start_hour else None
-        link.schedule_end_hour = int(end_hour) if end_hour else None
-        link.schedule_timezone = request.form.get('schedule_timezone') or 'UTC'
-        
-        # Limits
-        max_clicks = request.form.get('max_clicks')
-        expiration = request.form.get('expiration_minutes')
-        link.max_clicks = int(max_clicks) if max_clicks else 0
-        link.expiration_minutes = int(expiration) if expiration else 0
-        
-        # Regenerate mask if requested
-        if request.form.get('regenerate_mask'):
-            full_url = f"{Config.SERVER_URL}/{slug}"
-            masked = shorten_with_isgd(full_url)
-            if masked:
-                link.public_masked_url = masked
-        
-        db.session.commit()
-        flash('Link updated', 'success')
-        return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
-    
-    return render_template('edit.html', link=link, server_url=Config.SERVER_URL)
 
-@bp.route('/qr/<slug>')
+    if request.method == "POST":
+        try:
+            values = _link_form_values(request.form)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("dashboard.dashboard_links.edit_link", slug=slug))
+
+        for key, value in values.items():
+            setattr(link, key, value)
+
+        password = request.form.get("password", "")
+        if sanitize(password, 255):
+            import hashlib
+
+            link.password_hash = hashlib.sha256(password.encode()).hexdigest()
+        elif "remove_password" in request.form:
+            link.password_hash = None
+
+        link.public_masked_url = _mask_url_for_link(link.slug)
+        db.session.commit()
+        _invalidate_link_cache(link.slug)
+        flash("Link updated.", "success")
+        return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+
+    return render_template("edit.html", link=link, mask_with_isgd=Config.MASK_WITH_ISGD)
+
+
+@bp.route("/qr/<slug>")
 @login_required
-def qr_code(slug):
-    """Generate QR code for link."""
-    full_url = f"{Config.SERVER_URL}/{slug}"
+def qr_code(slug: str):
+    full_url = f"{Config.SERVER_URL.rstrip('/')}/{slug}"
     qr = segno.make(full_url)
-    buf = io.BytesIO()
-    qr.save(buf, kind='png', scale=10)
-    buf.seek(0)
-    
-    response = make_response(buf.getvalue())
-    response.headers.set('Content-Type', 'image/png')
-    response.headers.set('Content-Disposition', 'inline', filename=f'{slug}_qr.png')
+    buffer = io.BytesIO()
+    qr.save(buffer, kind="png", scale=10)
+    buffer.seek(0)
+
+    response = make_response(buffer.getvalue())
+    response.headers["Content-Type"] = "image/png"
+    response.headers["Content-Disposition"] = f"inline; filename={slug}_qr.png"
     return response
 
-@bp.route('/qr_view/<slug>')
-@login_required
-def qr_view(slug):
-    link = Link.query.filter_by(slug=slug).first_or_404()
-    return render_template('qr_view.html', link=link, server_url=Config.SERVER_URL)
 
-@bp.route('/settings', methods=['GET', 'POST'])
+@bp.route("/qr_view/<slug>")
+@login_required
+def qr_view(slug: str):
+    return render_template("qr_view.html", link=Link.query.filter_by(slug=slug).first_or_404())
+
+
+@bp.route("/settings", methods=["GET", "POST"])
 @login_required
 def settings():
-    """Global settings page."""
-    
-    # Path to data files
-    data_dir = os.path.join(current_app.root_path, 'data')
-    os.makedirs(data_dir, exist_ok=True)
-    disposable_path = os.path.join(data_dir, 'disposable_domains.txt')
-    
-    # Ensure file exists
-    if not os.path.exists(disposable_path):
-        with open(disposable_path, 'w') as f: f.write('')
+    data_dir = Path(current_app.root_path) / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    disposable_path = data_dir / "disposable_domains.txt"
+    privacy_path = data_dir / "privacy_domains.txt"
+    disposable_path.touch(exist_ok=True)
+    privacy_path.touch(exist_ok=True)
 
-    if request.method == 'POST':
-        # 1. Update .env (System Settings)
-        from ...utils import update_env_file
-        
-        ai_prompt = request.form.get('ai_prompt')
-        env_updates = {
-            'GEMINI_API_KEY': request.form.get('api_key'),
-            'SERVER_URL': request.form.get('server_url'),
-            'HOLEHE_CMD': request.form.get('holehe_cmd'),
-            'GEMINI_MODEL': request.form.get('gemini_model'),
-            'AI_PROMPT': ai_prompt,
-            'AI_SYSTEM_PROMPT': ai_prompt,  # Backward compatibility
-        }
-        
-        # Filter None and update
-        keys_to_update = {k: v for k, v in env_updates.items() if v is not None}
-        if keys_to_update:
-            update_env_file(keys_to_update)
-            
-        # 2. Update Disposable Domains List
-        disposable_domains = request.form.get('disposable_domains', '')
-        # Clean and validate
-        clean_domains = [d.strip().lower() for d in disposable_domains.split('\n') if d.strip()]
-        try:
-            with open(disposable_path, 'w') as f:
-                f.write('\n'.join(clean_domains))
-        except Exception as e:
-            flash(f'Error saving domains: {e}', 'error')
+    if request.method == "POST":
+        disposable_domains = request.form.get("disposable_domains", "")
+        privacy_domains = request.form.get("privacy_domains", "")
+        disposable_lines = [sanitize(line, 255).lower() for line in disposable_domains.splitlines() if sanitize(line, 255)]
+        privacy_lines = [sanitize(line, 255).lower() for line in privacy_domains.splitlines() if sanitize(line, 255)]
+        disposable_path.write_text("\n".join(disposable_lines), encoding="utf-8")
+        privacy_path.write_text("\n".join(privacy_lines), encoding="utf-8")
+        flash("Domain lists updated. Restart the app to reload them.", "success")
+        return redirect(url_for("dashboard.dashboard_links.settings"))
 
-        flash('Settings saved. Restart required for system changes.', 'success')
-        return redirect(url_for('dashboard.dashboard_links.settings'))
-    
-    # Load current values
-    try:
-        with open(disposable_path, 'r') as f:
-            disposable_content = f.read()
-    except:
-        disposable_content = ""
-        
-    return render_template('settings.html',
-                         api_key=Config.GEMINI_API_KEY,
-                         server_url=Config.SERVER_URL,
-                         holehe_cmd=os.getenv('HOLEHE_CMD', 'holehe'),
-                         gemini_model=Config.GEMINI_MODEL,
-                         ai_prompt=Config.AI_PROMPT,
-                         disposable_domains=disposable_content)
+    return render_template(
+        "settings.html",
+        server_url=Config.SERVER_URL,
+        gemini_model=Config.GEMINI_MODEL,
+        mask_with_isgd=Config.MASK_WITH_ISGD,
+        trust_proxy_headers=Config.TRUST_PROXY_HEADERS,
+        visit_retention_days=Config.VISIT_RETENTION_DAYS,
+        disposable_domains=disposable_path.read_text(encoding="utf-8"),
+        privacy_domains=privacy_path.read_text(encoding="utf-8"),
+    )

@@ -1,128 +1,263 @@
-from flask import Blueprint, render_template, request, redirect, flash, url_for, session
-from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.security import check_password_hash
-import pyotp
+import base64
 import json
 
-from ..extensions import login_manager, limiter
+import bcrypt
+import pyotp
+from flask import (
+    Blueprint,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from flask_login import current_user, login_required, login_user, logout_user
+from webauthn import (
+    generate_authentication_options,
+    options_to_json,
+    verify_authentication_response,
+)
+from webauthn.helpers.structs import PublicKeyCredentialDescriptor, UserVerificationRequirement
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from ..config import Config
-from ..models import User, db
+from ..extensions import db, limiter
+from ..models import SetupState, User
+from ..utils import generate_secret_code, sanitize, safe_json
 
-bp = Blueprint('auth', __name__)
 
-@login_manager.user_loader
-def load_user(user_id):
-    """Load user from database by ID."""
-    try:
-        if not user_id: return None
-        return User.query.get(int(user_id))
-    except (ValueError, TypeError):
-        return None
+bp = Blueprint("auth", __name__)
 
-@bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit("10 per minute")
+
+def _setup_state() -> SetupState:
+    state = db.session.get(SetupState, 1)
+    if state is None:
+        state = SetupState(id=1, setup_completed=False)
+        db.session.add(state)
+        db.session.commit()
+    return state
+
+
+def _passkey_rp_id() -> str:
+    return Config.SERVER_URL.replace("https://", "").replace("http://", "").split(":")[0].split("/")[0]
+
+
+@bp.route("/setup", methods=["GET", "POST"])
+@limiter.limit(Config.RATE_LIMIT_AUTH)
+def setup():
+    if not Config.ADMIN_BOOTSTRAP_ENABLED:
+        return redirect(url_for("auth.login"))
+    if User.query.count() > 0:
+        return redirect(url_for("auth.login"))
+
+    if request.method == "POST":
+        email = sanitize(request.form.get("email"), 255).lower()
+        username = sanitize(request.form.get("username"), 80)
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if not email or "@" not in email:
+            flash("A valid admin email is required.", "error")
+            return render_template("setup.html", hide_nav=True)
+        if len(password) < 12:
+            flash("Password must be at least 12 characters long.", "error")
+            return render_template("setup.html", hide_nav=True)
+        if password != confirm_password:
+            flash("Passwords do not match.", "error")
+            return render_template("setup.html", hide_nav=True)
+
+        generated_secret = generate_secret_code(Config.SETUP_SECRET_LENGTH)
+        state = _setup_state()
+        state.setup_completed = True
+        state.admin_secret_hash = generate_password_hash(generated_secret)
+
+        admin = User(
+            email=email,
+            username=username or email.split("@", 1)[0],
+            password_hash=generate_password_hash(password),
+        )
+        db.session.add(admin)
+        db.session.commit()
+
+        session["setup_secret_code"] = generated_secret
+        login_user(admin, remember=True)
+        return redirect(url_for("auth.show_setup_secret"))
+
+    return render_template("setup.html", hide_nav=True)
+
+
+@bp.route("/setup/secret")
+@login_required
+def show_setup_secret():
+    secret_code = session.pop("setup_secret_code", None)
+    if not secret_code:
+        flash("The setup secret is no longer available.", "warning")
+        return redirect(url_for("dashboard.dashboard_security.security_settings"))
+    return render_template("setup_secret.html", hide_nav=True, secret_code=secret_code)
+
+
+@bp.route("/login", methods=["GET", "POST"])
+@limiter.limit(Config.RATE_LIMIT_AUTH)
 def login():
-    """Two-step login: username/password → optional 2FA."""
+    if User.query.count() == 0 and Config.ADMIN_BOOTSTRAP_ENABLED:
+        return redirect(url_for("auth.setup"))
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
-    
-    if request.method == 'POST':
-        # Step 1: Username & Password
-        if 'username' in request.form and 'password' in request.form:
-            username = request.form.get('username')
-            password = request.form.get('password')
-            
-            user = User.query.filter_by(username=username).first()
-            
-            if user and check_password_hash(user.password_hash, password):
-                # Check if 2FA is enabled
-                if user.totp_enabled:
-                    # Store user_id in session for 2FA step
-                    session['pending_2fa_user_id'] = user.id
-                    session['2fa_verified'] = False
-                    return render_template('2fa_verify.html', 
-                                         username=username,
-                                         has_passkey=bool(user.passkey_credentials),
-                                         hide_nav=True)
-                else:
-                    # No 2FA, login directly
-                    login_user(user, remember=True)
-                    flash('Login successful!', 'success')
-                    return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
-            else:
-                flash('Invalid username or password', 'error')
-        
-        # Step 2: 2FA Verification
-        elif 'totp_code' in request.form or 'backup_code' in request.form:
-            user_id = session.get('pending_2fa_user_id')
-            if not user_id:
-                flash('Session expired. Please login again.', 'error')
-                return redirect(url_for('auth.login'))
-            
-            user = User.query.get(user_id)
-            if not user:
-                flash('User not found', 'error')
-                return redirect(url_for('auth.login'))
-            
-            # Try TOTP code
-            if 'totp_code' in request.form:
-                totp_code = request.form.get('totp_code')
-                totp = pyotp.TOTP(user.totp_secret)
-                
-                if totp.verify(totp_code, valid_window=1):  # Allow ±30 seconds
-                    # Success!
-                    session.pop('pending_2fa_user_id', None)
-                    session.pop('2fa_verified', None)
-                    login_user(user, remember=True)
-                    flash('Login successful!', 'success')
-                    return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
-                else:
-                    flash('Invalid verification code', 'error')
-                    return render_template('2fa_verify.html', 
-                                         username=user.username,
-                                         has_passkey=bool(user.passkey_credentials),
-                                         hide_nav=True)
-            
-            # Try backup code
-            elif 'backup_code' in request.form:
-                backup_code = request.form.get('backup_code').strip()
-                
-                try:
-                    backup_codes = json.loads(user.backup_codes or '[]')
-                    
-                    # Check if code matches any stored code
-                    import bcrypt
-                    for stored_code in backup_codes:
-                        if bcrypt.checkpw(backup_code.encode(), stored_code.encode()):
-                            # Valid backup code - remove it and login
-                            backup_codes.remove(stored_code)
-                            user.backup_codes = json.dumps(backup_codes)
-                            db.session.commit()
-                            
-                            session.pop('pending_2fa_user_id', None)
-                            session.pop('2fa_verified', None)
-                            login_user(user, remember=True)
-                            flash(f'Login successful! {len(backup_codes)} backup codes remaining.', 'success')
-                            return redirect(url_for('dashboard.dashboard_links.dashboard_home'))
-                    
-                    flash('Invalid backup code', 'error')
-                    return render_template('2fa_verify.html', 
-                                         username=user.username,
-                                         has_passkey=bool(user.passkey_credentials),
-                                         hide_nav=True)
-                except Exception as e:
-                    flash('Error verifying backup code', 'error')
-                    return render_template('2fa_verify.html', 
-                                         username=user.username,
-                                         has_passkey=bool(user.passkey_credentials),
-                                         hide_nav=True)
-    
-    return render_template('login.html')
+        return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
-@bp.route('/logout')
+    if request.method == "POST":
+        if "email" in request.form and "password" in request.form:
+            email = sanitize(request.form.get("email"), 255).lower()
+            password = request.form.get("password", "")
+            user = User.query.filter_by(email=email).first()
+
+            if user and check_password_hash(user.password_hash, password):
+                if user.totp_enabled or bool(user.passkeys):
+                    session["pending_2fa_user_id"] = user.id
+                    return render_template(
+                        "2fa_verify.html",
+                        email=user.email,
+                        has_passkey=bool(user.passkeys),
+                        hide_nav=True,
+                    )
+                login_user(user, remember=True)
+                flash("Login successful.", "success")
+                return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+
+            flash("Invalid email or password.", "error")
+
+        elif "totp_code" in request.form or "backup_code" in request.form:
+            user_id = session.get("pending_2fa_user_id")
+            if not user_id:
+                flash("Session expired. Please login again.", "error")
+                return redirect(url_for("auth.login"))
+
+            user = db.session.get(User, int(user_id))
+            if user is None:
+                flash("User not found.", "error")
+                return redirect(url_for("auth.login"))
+
+            if "totp_code" in request.form:
+                code = sanitize(request.form.get("totp_code"), 6)
+                totp = pyotp.TOTP(user.totp_secret or "")
+                if user.totp_enabled and totp.verify(code, valid_window=1):
+                    session.pop("pending_2fa_user_id", None)
+                    login_user(user, remember=True)
+                    flash("Login successful.", "success")
+                    return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+                flash("Invalid verification code.", "error")
+                return render_template(
+                    "2fa_verify.html",
+                    email=user.email,
+                    has_passkey=bool(user.passkeys),
+                    hide_nav=True,
+                )
+
+            backup_code = sanitize(request.form.get("backup_code"), 64).replace("-", "")
+            remaining_codes = []
+            matched = False
+            for stored_code in user.backup_code_hashes:
+                if not matched and bcrypt.checkpw(backup_code.encode(), stored_code.encode()):
+                    matched = True
+                    continue
+                remaining_codes.append(stored_code)
+
+            if matched:
+                user.backup_codes = json.dumps(remaining_codes)
+                db.session.commit()
+                session.pop("pending_2fa_user_id", None)
+                login_user(user, remember=True)
+                flash("Login successful with backup code.", "success")
+                return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+
+            flash("Invalid backup code.", "error")
+            return render_template(
+                "2fa_verify.html",
+                email=user.email,
+                has_passkey=bool(user.passkeys),
+                hide_nav=True,
+            )
+
+    return render_template("login.html", hide_nav=True)
+
+
+@bp.route("/auth/passkey/options", methods=["POST"])
+@limiter.limit(Config.RATE_LIMIT_AUTH)
+def passkey_auth_options():
+    payload = request.get_json(silent=True) or {}
+    email = sanitize(payload.get("email"), 255).lower()
+    if not email:
+        return jsonify({"error": "Email required"}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user or not user.passkeys:
+        return jsonify({"error": "No passkeys registered"}), 404
+
+    allow_credentials = []
+    for credential in user.passkeys:
+        allow_credentials.append(
+            PublicKeyCredentialDescriptor(id=base64.urlsafe_b64decode(credential["id"] + "=="))
+        )
+
+    options = generate_authentication_options(
+        rp_id=_passkey_rp_id(),
+        allow_credentials=allow_credentials,
+        user_verification=UserVerificationRequirement.PREFERRED,
+    )
+    session["webauthn_challenge"] = base64.b64encode(options.challenge).decode()
+    session["webauthn_user_id"] = user.id
+    return jsonify(json.loads(options_to_json(options)))
+
+
+@bp.route("/auth/passkey/verify", methods=["POST"])
+@limiter.limit(Config.RATE_LIMIT_AUTH)
+def passkey_auth_verify():
+    payload = request.get_json(silent=True) or {}
+    challenge = session.get("webauthn_challenge")
+    user_id = session.get("webauthn_user_id")
+    if not challenge or not user_id:
+        return jsonify({"verified": False, "error": "Session expired"}), 400
+
+    user = db.session.get(User, int(user_id))
+    if user is None:
+        return jsonify({"verified": False, "error": "User not found"}), 404
+
+    credentials = safe_json(user.passkey_credentials, []) or []
+    credential_id = payload.get("id") or payload.get("rawId")
+    matching = next((item for item in credentials if item["id"] == credential_id), None)
+    if matching is None:
+        return jsonify({"verified": False, "error": "Credential not found"}), 404
+
+    try:
+        verification = verify_authentication_response(
+            credential=payload,
+            expected_challenge=base64.b64decode(challenge),
+            expected_rp_id=_passkey_rp_id(),
+            expected_origin=Config.SERVER_URL,
+            credential_public_key=base64.urlsafe_b64decode(matching["public_key"] + "=="),
+            credential_current_sign_count=matching.get("sign_count", 0),
+        )
+    except Exception as exc:
+        return jsonify({"verified": False, "error": str(exc)}), 400
+
+    matching["sign_count"] = verification.new_sign_count
+    user.passkey_credentials = json.dumps(credentials)
+    db.session.commit()
+    session.pop("webauthn_challenge", None)
+    session.pop("webauthn_user_id", None)
+    session.pop("pending_2fa_user_id", None)
+    login_user(user, remember=True)
+    return jsonify({"verified": True, "redirect": url_for("dashboard.dashboard_links.dashboard_home")})
+
+
+@bp.route("/logout")
 @login_required
 def logout():
-    """Logout user."""
+    session.pop("setup_secret_code", None)
+    session.pop("pending_2fa_user_id", None)
+    session.pop("webauthn_challenge", None)
+    session.pop("webauthn_user_id", None)
     logout_user()
-    flash('Logged out successfully', 'success')
-    return redirect(url_for('auth.login'))
+    flash("Logged out.", "success")
+    return redirect(url_for("auth.login"))

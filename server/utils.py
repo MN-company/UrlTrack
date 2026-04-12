@@ -1,206 +1,260 @@
-import random
-import string
-import requests
-import os
-import math
 import ipaddress
+import json
+import math
+import os
+import random
+import secrets
+import string
 import time
-from typing import Tuple, Optional, Dict, List, Set, Any
 from functools import lru_cache
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from typing import Any, Dict, Optional, Set, Tuple
+
+import requests
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+
 from .config import Config
 
-# Global session for connection pooling (Speed boost)
-session = requests.Session()
+
+http_session = requests.Session()
 adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10)
-session.mount('http://', adapter)
-session.mount('https://', adapter)
+http_session.mount("http://", adapter)
+http_session.mount("https://", adapter)
+
+
+def safe_json(value, default=None):
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return default
+
+
+def sanitize(value: str, max_len: int = 2048) -> str:
+    if not value:
+        return ""
+    return str(value).strip()[:max_len]
+
+
+def generate_secret_code(length: int = 24) -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def generate_slug(length: int = 6) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(random.choice(alphabet) for _ in range(length))
+
 
 def is_bot_ua(ua_string: str) -> bool:
-    """Enhanced heuristic to detect bots, crawlers, and headless browsers."""
-    if not ua_string: return False
+    if not ua_string:
+        return False
     bots = [
-        'bot', 'crawl', 'slurp', 'spider', 'curl', 'wget', 'facebook', 'whatsapp', 'telegram', 
-        'expand', 'preview', 'peeker', 'twitter', 'discord', 'slack', 'go-http-client', 'python-requests',
-        'headless', 'phantomjs', 'puppeteer', 'selenium', 'urlscan', 'lighthouse', 'gtmetrix', 'pingdom'
+        "bot",
+        "crawl",
+        "slurp",
+        "spider",
+        "curl",
+        "wget",
+        "facebook",
+        "whatsapp",
+        "telegram",
+        "expand",
+        "preview",
+        "peeker",
+        "twitter",
+        "discord",
+        "slack",
+        "go-http-client",
+        "python-requests",
+        "headless",
+        "phantomjs",
+        "puppeteer",
+        "selenium",
+        "urlscan",
+        "lighthouse",
+        "gtmetrix",
+        "pingdom",
     ]
     ua_lower = ua_string.lower()
     return any(bot in ua_lower for bot in bots)
 
+
 def calculate_entropy(text: str) -> float:
-    """Calculates Shannon entropy of a string."""
-    if not text: return 0.0
+    if not text:
+        return 0.0
     entropy = 0.0
     length = len(text)
-    for x in set(text):
-        p_x = text.count(x) / length
-        entropy -= p_x * math.log2(p_x)
+    for char in set(text):
+        probability = text.count(char) / length
+        entropy -= probability * math.log2(probability)
     return entropy
 
+
 def is_gibberish_email(email: str) -> Tuple[bool, Optional[str]]:
-    """
-    Detects keyboard-smash or garbage emails based on heuristics.
-    Returns (True, Reason) if gibberish, (False, None) otherwise.
-    """
-    if not email or '@' not in email: return True, "Invalid Format"
-    
-    local_part = email.split('@')[0].lower()
-    
-    # 1. Length Checks
-    if len(local_part) < 3: return True, "Too Short"
-    
-    # 2. Entropy Check
-    ent = calculate_entropy(local_part)
-    if ent < 1.0 and len(local_part) > 3: return True, "Low Entropy (Repetitive)"
-    
-    # 3. Consonant Clusters
+    if not email or "@" not in email:
+        return True, "Invalid Format"
+
+    local_part = email.split("@", 1)[0].lower()
+    if len(local_part) < 3:
+        return True, "Too Short"
+
+    entropy = calculate_entropy(local_part)
+    if entropy < 1.0 and len(local_part) > 3:
+        return True, "Low Entropy (Repetitive)"
+
     vowels = "aeiouy"
-    consec_cons = 0
-    max_consec_cons = 0
+    consecutive = 0
+    longest = 0
     for char in local_part:
         if char.isalpha():
             if char not in vowels:
-                consec_cons += 1
-                max_consec_cons = max(max_consec_cons, consec_cons)
+                consecutive += 1
+                longest = max(longest, consecutive)
             else:
-                consec_cons = 0
-    
-    if max_consec_cons > 5: return True, "High Consonant Cluster"
-    
-    # 4. Keyboard Smash Patterns (Basic)
-    bad_patterns = ['asdf', 'qwer', 'zxcv', '1234', 'test', 'demo', 'qwerty']
-    if any(p in local_part for p in bad_patterns):
+                consecutive = 0
+    if longest > 5:
+        return True, "High Consonant Cluster"
+
+    bad_patterns = ["asdf", "qwer", "zxcv", "1234", "test", "demo", "qwerty"]
+    if any(pattern in local_part for pattern in bad_patterns):
         return True, "Common Pattern"
 
     return False, None
 
+
 def validate_email_strict(email: str) -> Tuple[bool, str]:
-    """Strict validation combining syntax, gibberish check, and domain rules."""
     import re
-    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-        return False, "Invalid Syntax"
-        
-    is_bad, reason = is_gibberish_email(email)
-    if is_bad:
-        return False, f"Gibberish Detected: {reason}"
-        
+
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email or ""):
+        return False, "Invalid email syntax."
+    gibberish, reason = is_gibberish_email(email)
+    if gibberish:
+        return False, f"Gibberish detected: {reason}"
     return True, "Valid"
 
-def generate_slug(length: int = 6) -> str:
-    """Generates a random alphanumeric slug."""
-    characters = string.ascii_letters + string.digits
-    return ''.join(random.choice(characters) for _ in range(length))
 
 @lru_cache(maxsize=1000)
 def shorten_with_isgd(url: str) -> Optional[str]:
-    """Shortens a URL using is.gd API for masking (Cached)."""
     try:
-        resp = session.get(f"https://is.gd/create.php?format=simple&url={url}", timeout=5)
-        if resp.status_code == 200:
-            return resp.text.strip()
-    except Exception as e:
-        print(f"is.gd Error: {e}")
+        response = http_session.get(
+            "https://is.gd/create.php",
+            params={"format": "simple", "url": url},
+            timeout=5,
+        )
+        if response.status_code == 200:
+            return response.text.strip()
+    except Exception as exc:
+        print(f"is.gd error: {exc}")
     return None
+
 
 @lru_cache(maxsize=2000)
 def get_geo_data(ip: str) -> Dict[str, Any]:
-    """Fetch ISP, Geo, AND Proxy/Hosting data from ip-api.com (Cached)."""
     try:
         fields = "status,country,city,lat,lon,isp,org,as,proxy,hosting,mobile,query,countryCode"
-        resp = session.get(f"http://ip-api.com/json/{ip}?fields={fields}", timeout=3.0)
-        data = resp.json()
-        if data.get('status') == 'success':
-            return data
-        else:
-            print(f"VPN Check Failed for {ip}: {data}")
-    except Exception as e:
-        print(f"VPN Check Timeout/Error for {ip}: {e}")
+        response = http_session.get(
+            f"http://ip-api.com/json/{ip}",
+            params={"fields": fields},
+            timeout=3.0,
+        )
+        payload = response.json()
+        if payload.get("status") == "success":
+            return payload
+    except Exception as exc:
+        print(f"Geo lookup failed for {ip}: {exc}")
     return {}
 
+
 def get_reverse_dns(ip: str) -> Optional[str]:
-    """Perform reverse DNS lookup to get hostname from IP."""
     import socket
+
     try:
         hostname, _, _ = socket.gethostbyaddr(ip)
         return hostname
-    except:
+    except Exception:
         return None
 
+
 def parse_referrer(url: str) -> Dict[str, Any]:
-    """Extract intelligence from referrer URL."""
     if not url:
-        return {'domain': None, 'platform': 'Direct', 'utm': {}}
-    
-    from urllib.parse import urlparse, parse_qs
+        return {"domain": None, "platform": "Direct", "utm": {}}
+
+    from urllib.parse import parse_qs, urlparse
+
     try:
         parsed = urlparse(url)
-        domain = parsed.netloc.replace('www.', '')
-        
-        # Identify platform
-        platform = 'Unknown'
-        if 'google' in domain: platform = 'Google'
-        elif 'facebook' in domain or 'fb.com' in domain: platform = 'Facebook'
-        elif 'twitter' in domain or 't.co' in domain or 'x.com' in domain: platform = 'Twitter/X'
-        elif 'linkedin' in domain: platform = 'LinkedIn'
-        elif 'instagram' in domain: platform = 'Instagram'
-        elif 'youtube' in domain: platform = 'YouTube'
-        elif 'tiktok' in domain: platform = 'TikTok'
-        elif 'reddit' in domain: platform = 'Reddit'
-        elif 'telegram' in domain or 't.me' in domain: platform = 'Telegram'
-        elif 'whatsapp' in domain: platform = 'WhatsApp'
-        else: platform = domain
-        
-        # Extract UTM params
-        utm = {}
-        for key in ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content']:
-            val = parse_qs(parsed.query).get(key)
-            if val: utm[key] = val[0]
-        
-        return {'domain': domain, 'platform': platform, 'utm': utm}
-    except:
-        return {'domain': url, 'platform': 'Unknown', 'utm': {}}
+        domain = parsed.netloc.replace("www.", "")
+        platform = "Unknown"
+        if "google" in domain:
+            platform = "Google"
+        elif "facebook" in domain or "fb.com" in domain:
+            platform = "Facebook"
+        elif "twitter" in domain or "t.co" in domain or "x.com" in domain:
+            platform = "Twitter/X"
+        elif "linkedin" in domain:
+            platform = "LinkedIn"
+        elif "instagram" in domain:
+            platform = "Instagram"
+        elif "youtube" in domain:
+            platform = "YouTube"
+        elif "tiktok" in domain:
+            platform = "TikTok"
+        elif "reddit" in domain:
+            platform = "Reddit"
+        elif "telegram" in domain or "t.me" in domain:
+            platform = "Telegram"
+        elif "whatsapp" in domain:
+            platform = "WhatsApp"
+        else:
+            platform = domain or "Unknown"
 
+        utm = {}
+        for key in ("utm_source", "utm_medium", "utm_campaign", "utm_content"):
+            values = parse_qs(parsed.query).get(key)
+            if values:
+                utm[key] = values[0]
+        return {"domain": domain, "platform": platform, "utm": utm}
+    except Exception:
+        return {"domain": url, "platform": "Unknown", "utm": {}}
 
 
 def load_domain_list(filename: str) -> Set[str]:
-    """Helper to load domain lists from server/data."""
-    domains = set()
+    domains: Set[str] = set()
     try:
-        path = os.path.join(os.path.dirname(__file__), 'data', filename)
+        path = os.path.join(os.path.dirname(__file__), "data", filename)
         if os.path.exists(path):
-            with open(path, 'r') as f:
-                domains = {line.strip().lower() for line in f if line.strip()}
-    except Exception as e:
-        print(f"Error loading {filename}: {e}")
+            with open(path, "r", encoding="utf-8") as handle:
+                domains = {line.strip().lower() for line in handle if line.strip()}
+    except Exception as exc:
+        print(f"Error loading {filename}: {exc}")
     return domains
 
-# Load once on start
-DISPOSABLE_DOMAINS = load_domain_list('disposable_domains.txt')
-PRIVACY_DOMAINS = load_domain_list('privacy_domains.txt')
 
-# Malicious IP Blocklist (loaded from GitHub on first call)
-_MALICIOUS_IPS = None
+DISPOSABLE_DOMAINS = load_domain_list("disposable_domains.txt")
+PRIVACY_DOMAINS = load_domain_list("privacy_domains.txt")
+_MALICIOUS_IPS: Optional[Set[str]] = None
 _MALICIOUS_IPS_LAST_REFRESH = 0.0
 
+
 def load_malicious_ips() -> Set[str]:
-    """Load malicious IP list from GitHub (cached after first load)."""
     global _MALICIOUS_IPS
     global _MALICIOUS_IPS_LAST_REFRESH
+
     if _MALICIOUS_IPS is not None:
-        # Refresh only if interval elapsed
         if time.time() - _MALICIOUS_IPS_LAST_REFRESH < Config.MALICIOUS_IP_REFRESH_SECONDS:
             return _MALICIOUS_IPS
-    
+
     _MALICIOUS_IPS = set()
+    cache_path = os.path.join(os.path.dirname(__file__), "data", "malicious_ips.txt")
+
     try:
-        # Try to load from local cache first
-        cache_path = os.path.join(os.path.dirname(__file__), 'data', 'malicious_ips.txt')
         if os.path.exists(cache_path):
-            with open(cache_path, 'r') as f:
+            with open(cache_path, "r", encoding="utf-8") as handle:
                 cached = set()
-                for line in f:
+                for line in handle:
                     line = line.strip()
-                    if not line or line.startswith('#'):
+                    if not line or line.startswith("#"):
                         continue
                     try:
                         ipaddress.ip_address(line)
@@ -210,138 +264,94 @@ def load_malicious_ips() -> Set[str]:
             if cached:
                 _MALICIOUS_IPS = cached
                 _MALICIOUS_IPS_LAST_REFRESH = time.time()
-                print(f"Loaded {len(_MALICIOUS_IPS)} malicious IPs from cache")
-        
-        # Update from GitHub with validation
-        try:
-            resp = session.get(
-                'https://raw.githubusercontent.com/sefinek/Malicious-IP-Addresses/main/lists/main.txt',
-                timeout=5
-            )
-            if resp.status_code == 200:
-                new_ips = set()
-                for line in resp.text.splitlines():
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    try:
-                        ipaddress.ip_address(line)
-                        new_ips.add(line)
-                    except ValueError:
-                        continue
-                if len(new_ips) >= Config.MALICIOUS_IP_MIN_COUNT:
-                    _MALICIOUS_IPS = new_ips
-                    _MALICIOUS_IPS_LAST_REFRESH = time.time()
-                    # Save to cache
-                    with open(cache_path, 'w') as f:
-                        f.write('\n'.join(sorted(new_ips)))
-                    print(f"Updated malicious IP list: {len(new_ips)} IPs")
-                else:
-                    print("Malicious IP update skipped (list too small)")
-        except Exception as e:
-            print(f"Malicious IP update failed: {e}")
-            
-    except Exception as e:
-        print(f"Error loading malicious IPs: {e}")
-    
-    return _MALICIOUS_IPS
+
+        response = http_session.get(
+            "https://raw.githubusercontent.com/sefinek/Malicious-IP-Addresses/main/lists/main.txt",
+            timeout=5,
+        )
+        if response.status_code == 200:
+            fresh = set()
+            for line in response.text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    ipaddress.ip_address(line)
+                    fresh.add(line)
+                except ValueError:
+                    continue
+            if len(fresh) >= Config.MALICIOUS_IP_MIN_COUNT:
+                _MALICIOUS_IPS = fresh
+                _MALICIOUS_IPS_LAST_REFRESH = time.time()
+                with open(cache_path, "w", encoding="utf-8") as handle:
+                    handle.write("\n".join(sorted(fresh)))
+    except Exception as exc:
+        print(f"Error loading malicious IPs: {exc}")
+
+    return _MALICIOUS_IPS or set()
 
 
 def anonymize_ip(ip: str) -> str:
-    """Mask IP address for storage while preserving coarse location."""
     try:
-        addr = ipaddress.ip_address(ip)
-        if addr.version == 4:
-            parts = ip.split('.')
+        address = ipaddress.ip_address(ip)
+        if address.version == 4:
+            parts = ip.split(".")
             if len(parts) == 4:
-                parts[-1] = '0'
-                return '.'.join(parts)
+                parts[-1] = "0"
+                return ".".join(parts)
         else:
-            # IPv6 -> zero out to /64
-            net = ipaddress.IPv6Network(f"{ip}/64", strict=False)
-            return str(net.network_address)
+            network = ipaddress.IPv6Network(f"{ip}/64", strict=False)
+            return str(network.network_address)
     except Exception:
         return ip
+    return ip
 
 
 def should_require_consent(request) -> bool:
     if not Config.REQUIRE_CONSENT:
         return False
-    cookie = request.cookies.get(Config.CONSENT_COOKIE_NAME)
-    return cookie != '1'
+    return request.cookies.get(Config.CONSENT_COOKIE_NAME) != "1"
+
 
 def is_malicious_ip(ip: str) -> bool:
-    """Check if IP is in the malicious blocklist."""
-    blocklist = load_malicious_ips()
-    return ip in blocklist
+    return ip in load_malicious_ips()
+
 
 def is_disposable_email(email: str) -> bool:
-    domain = email.split('@')[-1].lower()
+    domain = email.split("@")[-1].lower()
     return domain in DISPOSABLE_DOMAINS
 
+
 def is_privacy_email(email: str) -> bool:
-    domain = email.split('@')[-1].lower()
+    domain = email.split("@")[-1].lower()
     return domain in PRIVACY_DOMAINS
 
+
 def verify_turnstile(token: str, ip: str) -> bool:
-    secret = Config.TURNSTILE_SECRET_KEY
-    if not secret: 
-        print("ERROR: TURNSTILE_SECRET_KEY missing in Verify.")
+    if not Config.TURNSTILE_SECRET_KEY:
         return False
-    
+    if not token:
+        return False
     try:
-        resp = session.post(
-            'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-            data={'secret': secret, 'response': token, 'remoteip': ip},
-            timeout=5
+        response = http_session.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={"secret": Config.TURNSTILE_SECRET_KEY, "response": token, "remoteip": ip},
+            timeout=5,
         )
-        data = resp.json()
-        return data.get('success', False)
-    except Exception as e:
-        print(f"Turnstile Connection Error: {e}")
+        payload = response.json()
+        return bool(payload.get("success"))
+    except Exception as exc:
+        print(f"Turnstile verification failed: {exc}")
         return False
-def update_env_file(updates: Dict[str, str]):
-    """Safely updates keys in the .env file."""
-    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
-    if not os.path.exists(env_path):
-        return
-
-    with open(env_path, 'r') as f:
-        lines = f.readlines()
-
-    new_lines = []
-    updated_keys = set()
-    
-    for line in lines:
-        cleaned = line.strip()
-        # Handle comments and empty lines
-        if not cleaned or cleaned.startswith('#'):
-            new_lines.append(line)
-            continue
-            
-        key = cleaned.split('=')[0].strip()
-        if key in updates:
-            new_lines.append(f"{key}={updates[key]}\n")
-            updated_keys.add(key)
-        else:
-            new_lines.append(line)
-    
-    # Add new keys
-    for key, val in updates.items():
-        if key not in updated_keys:
-            new_lines.append(f"{key}={val}\n")
-            
-    with open(env_path, 'w') as f:
-        f.writelines(new_lines)
 
 
 def _visit_token_serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(Config.SECRET_KEY, salt='visit-token')
+    return URLSafeTimedSerializer(Config.SECRET_KEY, salt="visit-token")
 
 
 def sign_visit_token(visit_id: Any) -> Optional[str]:
     try:
-        return _visit_token_serializer().dumps({'v': int(visit_id)})
+        return _visit_token_serializer().dumps({"v": int(visit_id)})
     except Exception:
         return None
 
@@ -351,7 +361,7 @@ def verify_visit_token(token: Optional[str], max_age: int) -> Optional[int]:
         return None
     try:
         data = _visit_token_serializer().loads(token, max_age=max_age)
-        value = data.get('v')
+        value = data.get("v")
         return int(value) if value is not None else None
     except (BadSignature, SignatureExpired, ValueError, TypeError):
         return None
