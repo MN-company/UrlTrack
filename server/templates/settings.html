@@ -56,8 +56,18 @@
             </div>
 
             <div class="form-group" style="margin-top:1rem;">
+                <label>WEBHOOK_URL</label>
+                <input type="text" name="webhook_url" value="{{ webhook_url or '' }}">
+            </div>
+
+            <div class="form-group" style="margin-top:1rem;">
+                <label>WEBHOOK_SECRET</label>
+                <input type="password" name="webhook_secret" placeholder="leave blank to keep current">
+            </div>
+
+            <div class="form-group" style="margin-top:1rem;">
                 <label>TELEGRAM_BOT_TOKEN</label>
-                <input type="password" name="telegram_bot_token" placeholder="leave empty to keep current">
+                <input type="password" name="telegram_bot_token" placeholder="leave blank to keep current">
             </div>
 
             <div class="form-group" style="margin-top:1rem;">
@@ -77,11 +87,11 @@
 
             <div class="form-group" style="margin-top:1rem;">
                 <label>VISIT_RETENTION_DAYS</label>
-                <input type="number" name="visit_retention_days" min="1" value="{{ visit_retention_days }}">
+                <input type="number" name="visit_retention_days" min="1" max="3650" value="{{ visit_retention_days }}">
             </div>
 
             <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
-                <button type="submit" class="btn btn-primary">Save</button>
+                <button type="submit" class="btn btn-primary">Save configuration</button>
             </div>
         </form>
 

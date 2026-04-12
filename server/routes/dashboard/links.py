@@ -18,9 +18,9 @@ bp = Blueprint("dashboard_links", __name__)
 
 
 def _mask_url_for_link(slug: str) -> str | None:
-    if not Config.MASK_WITH_ISGD:
+    if not current_app.config.get("MASK_WITH_ISGD"):
         return None
-    full_url = f"{Config.SERVER_URL.rstrip('/')}/{slug}"
+    full_url = f"{current_app.config.get('SERVER_URL', '').rstrip('/')}/{slug}"
     return shorten_with_isgd(full_url)
 
 
@@ -31,6 +31,11 @@ def _invalidate_link_cache(slug: str) -> None:
 def _set_runtime_value(key: str, value):
     current_app.config[key] = value
     setattr(Config, key, value)
+
+
+def _public_link_url(slug: str) -> str:
+    base_url = current_app.config.get("SERVER_URL", "").rstrip("/")
+    return f"{base_url}/{slug}" if base_url else f"/{slug}"
 
 
 def _link_form_values(form):
@@ -124,7 +129,7 @@ def create_link():
     link.public_masked_url = _mask_url_for_link(slug)
     db.session.add(link)
     db.session.commit()
-    flash(f"Link created: /{slug}", "success")
+    flash(f"Link created: {_public_link_url(slug)}", "success")
     return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
 
@@ -164,10 +169,10 @@ def create_full():
         link.public_masked_url = _mask_url_for_link(slug)
         db.session.add(link)
         db.session.commit()
-        flash(f"Link created: /{slug}", "success")
+        flash(f"Link created: {_public_link_url(slug)}", "success")
         return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
-    return render_template("create_full.html", mask_with_isgd=Config.MASK_WITH_ISGD)
+    return render_template("create_full.html", mask_with_isgd=current_app.config.get("MASK_WITH_ISGD"))
 
 
 @bp.route("/delete/<int:link_id>", methods=["POST"])
@@ -212,13 +217,13 @@ def edit_link(slug: str):
         flash("Link updated.", "success")
         return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
-    return render_template("edit.html", link=link, mask_with_isgd=Config.MASK_WITH_ISGD)
+    return render_template("edit.html", link=link, mask_with_isgd=current_app.config.get("MASK_WITH_ISGD"))
 
 
 @bp.route("/qr/<slug>")
 @login_required
 def qr_code(slug: str):
-    full_url = f"{Config.SERVER_URL.rstrip('/')}/{slug}"
+    full_url = _public_link_url(slug)
     qr = segno.make(full_url)
     buffer = io.BytesIO()
     qr.save(buffer, kind="png", scale=10)
@@ -254,34 +259,44 @@ def settings():
             server_url = sanitize(request.form.get("server_url"), 2048)
             gemini_api_key = sanitize(request.form.get("gemini_api_key"), 512)
             gemini_model = sanitize(request.form.get("gemini_model"), 255)
+            webhook_url = sanitize(request.form.get("webhook_url"), 2048)
+            webhook_secret = sanitize(request.form.get("webhook_secret"), 512)
             telegram_bot_token = sanitize(request.form.get("telegram_bot_token"), 512)
             telegram_chat_id = sanitize(request.form.get("telegram_chat_id"), 255)
             mask_with_isgd = "mask_with_isgd" in request.form
             trust_proxy_headers = "trust_proxy_headers" in request.form
-            visit_retention_days = int(sanitize(request.form.get("visit_retention_days"), 10) or Config.VISIT_RETENTION_DAYS)
+            visit_retention_days = int(
+                sanitize(request.form.get("visit_retention_days"), 10)
+                or current_app.config.get("VISIT_RETENTION_DAYS", Config.VISIT_RETENTION_DAYS)
+            )
 
             restart_required = False
             if server_url:
-                set_key(dotenv_path, "SERVER_URL", server_url)
+                set_key(str(dotenv_path), "SERVER_URL", server_url)
                 restart_required = True
 
             if gemini_api_key:
-                set_key(dotenv_path, "GEMINI_API_KEY", gemini_api_key)
+                set_key(str(dotenv_path), "GEMINI_API_KEY", gemini_api_key)
                 _set_runtime_value("GEMINI_API_KEY", gemini_api_key)
             if gemini_model:
-                set_key(dotenv_path, "GEMINI_MODEL", gemini_model)
+                set_key(str(dotenv_path), "GEMINI_MODEL", gemini_model)
                 _set_runtime_value("GEMINI_MODEL", gemini_model)
 
-            if telegram_bot_token:
-                set_key(dotenv_path, "TELEGRAM_BOT_TOKEN", telegram_bot_token)
-                _set_runtime_value("TELEGRAM_BOT_TOKEN", telegram_bot_token)
-            if telegram_chat_id:
-                set_key(dotenv_path, "TELEGRAM_CHAT_ID", telegram_chat_id)
-                _set_runtime_value("TELEGRAM_CHAT_ID", telegram_chat_id)
+            set_key(str(dotenv_path), "WEBHOOK_URL", webhook_url)
+            _set_runtime_value("WEBHOOK_URL", webhook_url)
+            if webhook_secret:
+                set_key(str(dotenv_path), "WEBHOOK_SECRET", webhook_secret)
+                _set_runtime_value("WEBHOOK_SECRET", webhook_secret)
 
-            set_key(dotenv_path, "MASK_WITH_ISGD", "true" if mask_with_isgd else "false")
-            set_key(dotenv_path, "TRUST_PROXY_HEADERS", "true" if trust_proxy_headers else "false")
-            set_key(dotenv_path, "VISIT_RETENTION_DAYS", str(visit_retention_days))
+            if telegram_bot_token:
+                set_key(str(dotenv_path), "TELEGRAM_BOT_TOKEN", telegram_bot_token)
+                _set_runtime_value("TELEGRAM_BOT_TOKEN", telegram_bot_token)
+            set_key(str(dotenv_path), "TELEGRAM_CHAT_ID", telegram_chat_id)
+            _set_runtime_value("TELEGRAM_CHAT_ID", telegram_chat_id)
+
+            set_key(str(dotenv_path), "MASK_WITH_ISGD", "true" if mask_with_isgd else "false")
+            set_key(str(dotenv_path), "TRUST_PROXY_HEADERS", "true" if trust_proxy_headers else "false")
+            set_key(str(dotenv_path), "VISIT_RETENTION_DAYS", str(visit_retention_days))
 
             _set_runtime_value("MASK_WITH_ISGD", mask_with_isgd)
             _set_runtime_value("TRUST_PROXY_HEADERS", trust_proxy_headers)
@@ -302,12 +317,13 @@ def settings():
 
     return render_template(
         "settings.html",
-        server_url=Config.SERVER_URL,
-        gemini_model=Config.GEMINI_MODEL,
-        telegram_chat_id=Config.TELEGRAM_CHAT_ID,
-        mask_with_isgd=Config.MASK_WITH_ISGD,
-        trust_proxy_headers=Config.TRUST_PROXY_HEADERS,
-        visit_retention_days=Config.VISIT_RETENTION_DAYS,
+        server_url=current_app.config.get("SERVER_URL"),
+        gemini_model=current_app.config.get("GEMINI_MODEL"),
+        webhook_url=current_app.config.get("WEBHOOK_URL"),
+        telegram_chat_id=current_app.config.get("TELEGRAM_CHAT_ID"),
+        mask_with_isgd=current_app.config.get("MASK_WITH_ISGD"),
+        trust_proxy_headers=current_app.config.get("TRUST_PROXY_HEADERS"),
+        visit_retention_days=current_app.config.get("VISIT_RETENTION_DAYS"),
         disposable_domains=disposable_path.read_text(encoding="utf-8"),
         privacy_domains=privacy_path.read_text(encoding="utf-8"),
     )

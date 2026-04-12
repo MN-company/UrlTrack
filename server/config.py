@@ -52,6 +52,8 @@ class Config:
     SERVER_URL: str = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+    WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "")
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "")
     TURNSTILE_SITE_KEY: str = os.getenv("TURNSTILE_SITE_KEY", "")
     TURNSTILE_SECRET_KEY: str = os.getenv("TURNSTILE_SECRET_KEY", "")
     TRUST_PROXY_HEADERS: bool = _bool_env("TRUST_PROXY_HEADERS", False)
@@ -77,6 +79,7 @@ class Config:
     SETUP_SECRET_LENGTH: int = _int_env("SETUP_SECRET_LENGTH", 24)
     MALICIOUS_IP_REFRESH_SECONDS: int = _int_env("MALICIOUS_IP_REFRESH_SECONDS", 21600)
     MALICIOUS_IP_MIN_COUNT: int = _int_env("MALICIOUS_IP_MIN_COUNT", 1000)
+    SMART_FOLLOWUP_HOURS: int = _int_env("SMART_FOLLOWUP_HOURS", 48)
     RESERVED_SLUGS: FrozenSet[str] = frozenset(
         {
             "dashboard",
@@ -116,6 +119,8 @@ class Config:
             "SERVER_URL": config.SERVER_URL,
             "TELEGRAM_BOT_TOKEN": config.TELEGRAM_BOT_TOKEN,
             "TELEGRAM_CHAT_ID": config.TELEGRAM_CHAT_ID,
+            "WEBHOOK_URL": config.WEBHOOK_URL,
+            "WEBHOOK_SECRET": config.WEBHOOK_SECRET,
             "GEMINI_API_KEY": config.GEMINI_API_KEY,
             "GEMINI_MODEL": config.GEMINI_MODEL,
             "TURNSTILE_SITE_KEY": config.TURNSTILE_SITE_KEY,
@@ -138,5 +143,6 @@ class Config:
             "SETUP_SECRET_LENGTH": config.SETUP_SECRET_LENGTH,
             "MALICIOUS_IP_REFRESH_SECONDS": config.MALICIOUS_IP_REFRESH_SECONDS,
             "MALICIOUS_IP_MIN_COUNT": config.MALICIOUS_IP_MIN_COUNT,
+            "SMART_FOLLOWUP_HOURS": config.SMART_FOLLOWUP_HOURS,
             "RESERVED_SLUGS": config.RESERVED_SLUGS,
         }

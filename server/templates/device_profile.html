@@ -1,121 +1,173 @@
 {% extends "base.html" %}
 
+{% block breadcrumb %}Global Intel / Device{% endblock %}
+
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <h2><i class="fas fa-fingerprint"></i> Device Profile</h2>
-    <a href="/dashboard" class="btn-outline">Back</a>
-</div>
-
-<!-- Device Summary Card -->
-<div class="card" style="margin-bottom: 20px;">
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
-        <!-- Identity -->
+<div class="card" style="margin-bottom:1.5rem;">
+    <div class="card-header">
         <div>
-            <div style="color: var(--text-sec); font-size: 0.8rem; margin-bottom: 5px;">PRIMARY IDENTITY</div>
-            {% if primary_email %}
-            <div style="font-size: 1.1rem; color: var(--accent); font-weight: 600;">{{ primary_email }}</div>
-            {% else %}
-            <div style="color: #888; font-style: italic;">Anonymous</div>
-            {% endif %}
+            <span class="card-title"><i class="fa-solid fa-fingerprint"></i> Device Profile</span>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">
+                Fingerprint {{ fingerprint }}
+            </div>
         </div>
+        <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="btn btn-ghost">Back</a>
+    </div>
 
-        <!-- Total Activity -->
-        <div>
-            <div style="color: var(--text-sec); font-size: 0.8rem; margin-bottom: 5px;">TOTAL VISITS</div>
-            <div style="font-size: 1.5rem; font-weight: 700;">{{ total_visits }}</div>
-        </div>
-
-        <!-- Links Visited -->
-        <div>
-            <div style="color: var(--text-sec); font-size: 0.8rem; margin-bottom: 5px;">LINKS VISITED</div>
-            <div style="font-size: 1.5rem; font-weight: 700;">{{ links_visited|length }}</div>
-        </div>
-
-        <!-- Unique IPs -->
-        <div>
-            <div style="color: var(--text-sec); font-size: 0.8rem; margin-bottom: 5px;">UNIQUE IPs</div>
-            <div style="font-size: 1.5rem; font-weight: 700;">{{ ips|length }}</div>
-        </div>
+    <div class="dashboard-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="toggle-row"><label>Primary identity</label><span>{{ primary_email or 'Anonymous' }}</span></div>
+        <div class="toggle-row"><label>Total visits</label><span>{{ total_visits }}</span></div>
+        <div class="toggle-row"><label>Links visited</label><span>{{ links_visited|length }}</span></div>
+        <div class="toggle-row"><label>Unique IPs</label><span>{{ ips|length }}</span></div>
     </div>
 </div>
 
-<!-- Device Info -->
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-    <div class="card">
-        <h3><i class="fas fa-microchip"></i> Hardware Signature</h3>
-        <div class="mono" style="font-size: 0.9rem; margin-bottom: 10px; color: var(--accent);">
-            Fingerprint: {{ fingerprint }}
+<div class="dashboard-grid" style="grid-template-columns: 1.2fr 0.8fr; margin-bottom:1.5rem;">
+    <div class="card glass">
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-brain"></i> Summary</span>
         </div>
+        <div class="text-mono" style="font-size:0.88rem;color:var(--accent-primary);margin-bottom:0.75rem;">{{ fingerprint }}</div>
         {% if ai_summary %}
-        <div style="margin-bottom: 10px;">
-            <span style="color: var(--text-sec);">AI Analysis:</span>
-            <span style="font-weight: 600;">{{ ai_summary }}</span>
-        </div>
+        <p style="margin-bottom:0.75rem;">{{ ai_summary }}</p>
         {% endif %}
         {% if webgl %}
-        <div style="font-size: 0.85rem; color: #888;">
-            <i class="fas fa-cube"></i> {{ webgl }}
-        </div>
+        <div style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:0.75rem;">WebGL renderer: {{ webgl }}</div>
         {% endif %}
-        <div style="margin-top: 10px;">
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+            {% for country in countries %}
+            <span class="badge badge-success">{{ country }}</span>
+            {% endfor %}
             {% for dev in devices %}
-            <span class="badge badge-gray">{{ dev }}</span>
+            <span class="badge badge-warning">{{ dev }}</span>
             {% endfor %}
         </div>
     </div>
 
     <div class="card">
-        <h3><i class="fas fa-globe"></i> Geographic Footprint</h3>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-            {% for country in countries %}
-            <span class="badge badge-green">{{ country }}</span>
-            {% endfor %}
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-network-wired"></i> Correlated IDs</span>
         </div>
-        <div style="margin-top: 15px;">
-            <span style="color: var(--text-sec); font-size: 0.8rem;">Known IPs:</span>
-            <div style="font-size: 0.85rem; margin-top: 5px;">
-                {% for ip in ips[:5] %}
-                <span class="mono" style="color: #888;">{{ ip }}</span>{% if not loop.last %}, {% endif %}
+        <div style="margin-bottom:0.85rem;">
+            <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.35rem;">Emails</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+                {% for email in emails %}
+                <a href="{{ url_for('dashboard.dashboard_stats.global_search', q=email) }}" class="badge badge-warning">{{ email }}</a>
+                {% else %}
+                <span class="text-muted">No emails captured.</span>
                 {% endfor %}
-                {% if ips|length > 5 %}<span style="color:#666;"> +{{ ips|length - 5 }} more</span>{% endif %}
+            </div>
+        </div>
+        <div style="margin-bottom:0.85rem;">
+            <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.35rem;">IPs</div>
+            <div class="text-mono" style="font-size:0.84rem;line-height:1.8;">
+                {% for ip in ips %}
+                <span>{{ ip }}</span>{% if not loop.last %}, {% endif %}
+                {% else %}
+                <span class="text-muted">No IPs recorded.</span>
+                {% endfor %}
+            </div>
+        </div>
+        <div>
+            <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.35rem;">Links</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+                {% for slug in links_visited %}
+                <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=slug) }}" class="badge badge-primary">/{{ slug }}</a>
+                {% endfor %}
             </div>
         </div>
     </div>
 </div>
 
-<!-- Activity Log -->
 <div class="card">
-    <h3><i class="fas fa-history"></i> Activity Timeline (Last 50)</h3>
-    <table style="font-size: 0.85rem;">
-        <thead>
-            <tr>
-                <th>Time</th>
-                <th>Link</th>
-                <th>IP / Location</th>
-                <th>Email</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for v in visits %}
-            <tr>
-                <td class="mono" style="color: var(--text-sec);">{{ v.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                <td>
-                    <a href="/dashboard/stats/{{ v.link.slug }}" class="text-accent">/{{ v.link.slug }}</a>
-                </td>
-                <td>
-                    <span class="mono">{{ v.ip_address }}</span>
-                    <span style="color: #888; font-size: 0.8rem;"> - {{ v.city }}, {{ v.country }}</span>
-                </td>
-                <td>
-                    {% if v.email %}
-                    <span style="color: var(--accent);">{{ v.email }}</span>
-                    {% else %}
-                    <span style="color: #666; font-style: italic;">-</span>
+    <div class="card-header">
+        <span class="card-title"><i class="fa-solid fa-microscope"></i> Deep Fingerprint</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+        {% for detail in visit_details %}
+        {% set visit = detail.visit %}
+        <div style="padding:1rem;border:1px solid rgba(148,163,184,0.16);border-radius:18px;background:rgba(15,23,42,0.38);">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:0.85rem;">
+                <div>
+                    <div class="text-mono" style="font-size:0.9rem;">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+                    <div style="font-size:0.84rem;color:var(--text-secondary);margin-top:0.25rem;">
+                        /{{ visit.link.slug if visit.link else 'unknown' }} · {{ visit.city or 'Unknown city' }}{% if visit.country %}, {{ visit.country }}{% endif %}
+                    </div>
+                </div>
+                <div style="display:flex;gap:0.45rem;flex-wrap:wrap;justify-content:flex-end;">
+                    {% if detail.real_ip_detected %}
+                    <span class="badge badge-danger">Real IP detected</span>
                     {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                    {% if visit.is_vpn or visit.is_proxy %}
+                    <span class="badge badge-warning">VPN/Proxy</span>
+                    {% endif %}
+                    {% if visit.dwell_ms %}
+                    <span class="badge badge-success">{{ (visit.dwell_ms / 1000)|round(1) }}s dwell</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="dashboard-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Canvas / Audio / Rects</div>
+                    <div class="text-mono" style="font-size:0.82rem;line-height:1.8;">
+                        <div>Canvas: {{ visit.canvas_hash or 'n/a' }}</div>
+                        <div>Audio FP: {{ visit.audio_fp or 'n/a' }}</div>
+                        <div>ClientRects: {{ visit.client_rects_fp or 'n/a' }}</div>
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">WebGL</div>
+                    <div class="text-mono" style="font-size:0.82rem;line-height:1.8;">
+                        <div>Vendor: {{ visit.webgl_vendor or 'n/a' }}</div>
+                        <div>Renderer: {{ visit.webgl_renderer or 'n/a' }}</div>
+                        <div>Ext hash: {{ visit.webgl_extensions_hash or 'n/a' }}</div>
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Signals</div>
+                    <div class="text-mono" style="font-size:0.82rem;line-height:1.8;">
+                        <div>Platform: {{ visit.platform or 'n/a' }}</div>
+                        <div>Touch: {{ visit.touch_points if visit.touch_points is not none else 'n/a' }}</div>
+                        <div>Dark mode: {{ 'yes' if visit.dark_mode else 'no' if visit.dark_mode is not none else 'n/a' }}</div>
+                        <div>DNT: {{ visit.do_not_track or 'n/a' }}</div>
+                        <div>Conn: {{ visit.connection_type or 'n/a' }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:0.9rem;display:grid;grid-template-columns: 1fr 1fr;gap:1rem;">
+                <div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Fonts detected</div>
+                    <details>
+                        <summary>{{ detail.font_count }} fonts</summary>
+                        <div class="text-mono" style="font-size:0.8rem;line-height:1.7;margin-top:0.5rem;word-break:break-word;">
+                            {{ detail.fonts|join(', ') if detail.fonts else 'No font deviations recorded.' }}
+                        </div>
+                    </details>
+                </div>
+
+                <div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Network leakage</div>
+                    <div class="text-mono" style="font-size:0.8rem;line-height:1.7;word-break:break-word;">
+                        {{ detail.webrtc_ips|join(', ') if detail.webrtc_ips else 'No WebRTC IPs exposed.' }}
+                    </div>
+                    {% if detail.extensions %}
+                    <div style="margin-top:0.6rem;">
+                        <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Extensions detected</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
+                            {% for ext in detail.extensions %}
+                            <span class="badge badge-primary">{{ ext }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
 </div>
 {% endblock %}

@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -8,7 +9,7 @@ from sqlalchemy.orm import joinedload
 
 from ...extensions import db
 from ...models import Link, Visit
-from ...utils import sanitize
+from ...utils import safe_json, sanitize
 
 
 bp = Blueprint("dashboard_stats", __name__)
@@ -196,11 +197,35 @@ def device_profile(fingerprint: str):
     primary_email = emails[0] if emails else None
     ai_summary = next((visit.ai_summary for visit in visits if visit.ai_summary), None)
     webgl = next((visit.webgl_renderer for visit in visits if visit.webgl_renderer), None)
+    visit_details = []
+    for visit in visits[:50]:
+        fonts = [font for font in (visit.fonts or "").split(",") if font]
+        webrtc_ips = safe_json(visit.webrtc_ips, []) or []
+        if not isinstance(webrtc_ips, list):
+            webrtc_ips = []
+        extensions = safe_json(visit.extensions_detected, []) or []
+        if not isinstance(extensions, list):
+            extensions = []
+        real_ip_detected = any(
+            ip and ip != (visit.ip_address or "")
+            for ip in webrtc_ips
+        )
+        visit_details.append(
+            {
+                "visit": visit,
+                "fonts": fonts,
+                "font_count": len(fonts),
+                "webrtc_ips": webrtc_ips,
+                "extensions": extensions,
+                "real_ip_detected": real_ip_detected,
+            }
+        )
 
     return render_template(
         "device_profile.html",
         fingerprint=fingerprint,
         visits=visits[:50],
+        visit_details=visit_details,
         emails=emails,
         ips=ips,
         links_visited=links_visited,
@@ -218,61 +243,77 @@ def device_profile(fingerprint: str):
 def graph():
     visits = (
         Visit.query.options(joinedload(Visit.link))
-        .filter(Visit.canvas_hash.isnot(None))
+        .filter(db.or_(Visit.canvas_hash.isnot(None), Visit.email.isnot(None)))
         .order_by(Visit.timestamp.desc())
         .all()
     )
 
-    nodes = []
-    links = []
-    seen_nodes = set()
-    seen_links = set()
-
-    def add_node(node_id: str, node_type: str, label: str, url: str | None = None):
-        if node_id in seen_nodes:
-            return
-        seen_nodes.add(node_id)
-        nodes.append({"id": node_id, "type": node_type, "label": label, "url": url})
-
-    def add_link(source: str, target: str):
-        edge = (source, target)
-        if edge in seen_links:
-            return
-        seen_links.add(edge)
-        links.append({"source": source, "target": target})
+    nodes = {}
+    edge_weights = defaultdict(int)
 
     for visit in visits:
-        if not visit.link or not visit.canvas_hash:
+        if not visit.link:
             continue
 
-        hash_value = visit.canvas_hash
         slug_value = visit.link.slug
-        hash_id = f"hash:{hash_value}"
         slug_id = f"slug:{slug_value}"
+        nodes[slug_id] = {
+            "id": slug_id,
+            "type": "slug",
+            "label": slug_value,
+            "url": url_for("dashboard.dashboard_stats.stats", slug=slug_value),
+        }
 
-        add_node(
-            hash_id,
-            "hash",
-            hash_value,
-            url_for("dashboard.dashboard_stats.device_profile", fingerprint=hash_value),
-        )
-        add_node(
-            slug_id,
-            "slug",
-            slug_value,
-            url_for("dashboard.dashboard_stats.stats", slug=slug_value),
-        )
-        add_link(hash_id, slug_id)
+        if visit.canvas_hash:
+            hash_value = visit.canvas_hash
+            hash_id = f"hash:{hash_value}"
+            nodes[hash_id] = {
+                "id": hash_id,
+                "type": "hash",
+                "label": hash_value[:8],
+                "url": url_for("dashboard.dashboard_stats.device_profile", fingerprint=hash_value),
+            }
+            edge_weights[(hash_id, slug_id)] += 1
 
-        if visit.email:
+            if visit.email:
+                email_value = visit.email
+                email_id = f"email:{email_value}"
+                nodes[email_id] = {
+                    "id": email_id,
+                    "type": "email",
+                    "label": email_value,
+                    "url": url_for("dashboard.dashboard_stats.global_search", q=email_value),
+                }
+                edge_weights[(hash_id, email_id)] += 1
+        elif visit.email:
             email_value = visit.email
             email_id = f"email:{email_value}"
-            add_node(
-                email_id,
-                "email",
-                email_value,
-                url_for("dashboard.dashboard_stats.global_search", q=email_value),
-            )
-            add_link(hash_id, email_id)
+            nodes[email_id] = {
+                "id": email_id,
+                "type": "email",
+                "label": email_value,
+                "url": url_for("dashboard.dashboard_stats.global_search", q=email_value),
+            }
 
-    return render_template("graph.html", graph_data={"nodes": nodes, "links": links})
+    degrees = defaultdict(int)
+    for (source, target), weight in edge_weights.items():
+        degrees[source] += weight
+        degrees[target] += weight
+
+    top_node_ids = {
+        node_id
+        for node_id, _degree in sorted(
+            degrees.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:500]
+    }
+
+    filtered_nodes = [node for node_id, node in nodes.items() if node_id in top_node_ids]
+    filtered_links = [
+        {"source": source, "target": target, "weight": weight}
+        for (source, target), weight in edge_weights.items()
+        if source in top_node_ids and target in top_node_ids
+    ]
+
+    graph_data = json.dumps({"nodes": filtered_nodes, "links": filtered_links})
+    return render_template("graph.html", graph_data=graph_data)

@@ -3,7 +3,7 @@
 {% block breadcrumb %}Global Intel / Graph{% endblock %}
 
 {% block head %}
-<script src="https://cdn.jsdelivr.net/npm/d3@7" nonce="{{ csp_nonce|default('') }}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" nonce="{{ csp_nonce|default('') }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -20,7 +20,7 @@
 </div>
 
 <script nonce="{{ csp_nonce|default('') }}">
-const GRAPH_DATA = {{ graph_data|tojson }};
+const GRAPH_DATA = {{ graph_data|safe }};
 </script>
 {% endblock %}
 
@@ -55,10 +55,10 @@ const GRAPH_DATA = {{ graph_data|tojson }};
     const link = zoomLayer
         .append("g")
         .attr("stroke", "rgba(148,163,184,0.35)")
-        .attr("stroke-width", 1.2)
         .selectAll("line")
         .data(GRAPH_DATA.links)
-        .join("line");
+        .join("line")
+        .attr("stroke-width", function (d) { return Math.max(1, Math.min(4, d.weight || 1)); });
 
     const node = zoomLayer
         .append("g")

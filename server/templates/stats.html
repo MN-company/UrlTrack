@@ -21,7 +21,7 @@
         <div class="toggle-row"><label>Top countries</label><span>{{ top_countries|length }}</span></div>
         <div class="toggle-row"><label>Top referrers</label><span>{{ top_referrers|length }}</span></div>
         <div class="toggle-row"><label>Avg engagement</label><span>{{ ((avg_dwell_ms or 0) / 1000)|round(1) }}s</span></div>
-        <div class="toggle-row"><label>Engaged visits</label><span>{{ engaged_count }}</span></div>
+        <div class="toggle-row" title="Visits with >5s of reading time"><label>Engaged</label><span>{{ engaged_count }}</span></div>
     </div>
 </div>
 
