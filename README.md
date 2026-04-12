@@ -91,6 +91,8 @@ SKIP_BACKGROUND_WORKER=1 python -m flask --app server:create_app db migrate -m "
 docker compose up --build
 ```
 
+For Docker deployments, `docker-compose.yml` pins SQLite to `/app/server/data/ulrtrack.db` so the mounted `./server/data` directory persists the database across restarts.
+
 The Docker image runs:
 
 ```bash
