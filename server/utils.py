@@ -231,8 +231,27 @@ def load_domain_list(filename: str) -> Set[str]:
     return domains
 
 
-DISPOSABLE_DOMAINS = load_domain_list("disposable_domains.txt")
-PRIVACY_DOMAINS = load_domain_list("privacy_domains.txt")
+_domain_cache: Dict[str, Tuple[float, Set[str]]] = {}
+_DOMAIN_CACHE_TTL = 300
+
+
+def _load_domain_list_cached(filename: str) -> Set[str]:
+    now = time.time()
+    cached = _domain_cache.get(filename)
+    if cached is not None:
+        ts, data = cached
+        if now - ts < _DOMAIN_CACHE_TTL:
+            return data
+
+    data = load_domain_list(filename)
+    _domain_cache[filename] = (now, data)
+    return data
+
+
+def invalidate_domain_cache() -> None:
+    _domain_cache.clear()
+
+
 _MALICIOUS_IPS: Optional[Set[str]] = None
 _MALICIOUS_IPS_LAST_REFRESH = 0.0
 
@@ -319,12 +338,12 @@ def is_malicious_ip(ip: str) -> bool:
 
 def is_disposable_email(email: str) -> bool:
     domain = email.split("@")[-1].lower()
-    return domain in DISPOSABLE_DOMAINS
+    return domain in _load_domain_list_cached("disposable_domains.txt")
 
 
 def is_privacy_email(email: str) -> bool:
     domain = email.split("@")[-1].lower()
-    return domain in PRIVACY_DOMAINS
+    return domain in _load_domain_list_cached("privacy_domains.txt")
 
 
 def verify_turnstile(token: str, ip: str) -> bool:

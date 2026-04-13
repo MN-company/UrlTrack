@@ -8,11 +8,54 @@ from .extensions import cache, csrf, db, limiter, login_manager, migrate
 from .models import User
 from .worker import start_worker
 
+DISPOSABLE_DEFAULTS = [
+    "tempmail.com",
+    "10minutemail.com",
+    "guerrillamail.com",
+    "mailinator.com",
+    "throwaway.email",
+    "getnada.com",
+    "temp-mail.org",
+    "fakeinbox.com",
+    "trashmail.com",
+    "maildrop.cc",
+    "yopmail.com",
+    "sharklasers.com",
+    "dispostable.com",
+    "mailnesia.com",
+    "spamgourmet.com",
+    "jetable.org",
+    "anonymbox.net",
+    "tempmailaddress.com",
+    "emailondeck.com",
+    "mintemail.com",
+]
+
+PRIVACY_DEFAULTS = [
+    "icloud.com",
+    "me.com",
+    "protonmail.com",
+    "proton.me",
+    "tutanota.com",
+    "tutamail.com",
+]
+
+
+def _seed_default_domain_lists(data_dir: Path) -> None:
+    for filename, defaults in [
+        ("disposable_domains.txt", DISPOSABLE_DEFAULTS),
+        ("privacy_domains.txt", PRIVACY_DEFAULTS),
+    ]:
+        path = data_dir / filename
+        if not path.exists() or path.stat().st_size == 0:
+            path.write_text("\n".join(defaults), encoding="utf-8")
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_mapping(Config.as_flask_config())
     (Path(app.root_path) / "data").mkdir(parents=True, exist_ok=True)
+    _seed_default_domain_lists(Path(app.root_path) / "data")
 
     if Config.TRUST_PROXY_HEADERS:
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)

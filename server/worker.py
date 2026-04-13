@@ -28,6 +28,15 @@ def _telegram_escape(value: str) -> str:
     return value
 
 
+def _telegram_plain_text(value: str) -> str:
+    if not value:
+        return ""
+    value = value.replace("*", "").replace("`", "")
+    for char in ("_", "[", "]", "(", ")", "~", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"):
+        value = value.replace(f"\\{char}", char)
+    return value.replace("\\", "")
+
+
 def _build_visit_payload(visit: Visit) -> dict:
     return {
         "id": visit.id,
@@ -93,11 +102,7 @@ def _fire_telegram(bot_token: str, chat_id: str, visit_payload: dict) -> None:
             f"🕐 {timestamp}"
         )
 
-        requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=5,
-        )
+        _send_telegram_text(bot_token, chat_id, text)
     except Exception as exc:
         print(f"Telegram delivery error: {exc}")
 
@@ -106,7 +111,7 @@ def _send_telegram_text(bot_token: str, chat_id: str, text: str) -> None:
     try:
         requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            json={"chat_id": chat_id, "text": _telegram_plain_text(text)},
             timeout=5,
         )
     except Exception as exc:
