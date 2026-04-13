@@ -10,7 +10,7 @@ from sqlalchemy import distinct, func
 from ...config import BASE_DIR, Config
 from ...extensions import cache, db
 from ...models import Link, Visit
-from ...utils import sanitize, shorten_with_isgd
+from ...utils import invalidate_domain_cache, sanitize, shorten_with_isgd
 from ...validators import normalize_destination_url, normalize_optional_url, parse_bool, validate_slug
 
 
@@ -312,7 +312,8 @@ def settings():
             privacy_lines = [sanitize(line, 255).lower() for line in privacy_domains.splitlines() if sanitize(line, 255)]
             disposable_path.write_text("\n".join(disposable_lines), encoding="utf-8")
             privacy_path.write_text("\n".join(privacy_lines), encoding="utf-8")
-            flash("Domain lists updated. Restart the app to reload them.", "success")
+            invalidate_domain_cache()
+            flash("Domain lists updated. Changes will be picked up within the cache TTL.", "success")
         return redirect(url_for("dashboard.dashboard_links.settings"))
 
     return render_template(
