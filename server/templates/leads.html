@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div>
+            <h2>Leads</h2>
+            <p style="color:var(--text-muted); margin:6px 0 0;">People and device clusters reconstructed from visits.</p>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Label</th>
+                <th>Email</th>
+                <th>Country</th>
+                <th>Device</th>
+                <th>Visits</th>
+                <th>Last Seen</th>
+                <th>VPN</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lead in leads %}
+            <tr onclick="window.location='{{ url_for('dashboard.dashboard_leads.lead_detail', lead_id=lead.id) }}';" style="cursor:pointer;">
+                <td>
+                    {% if lead.label %}
+                    <span class="badge {% if lead.label|lower == 'hot' %}badge-danger{% elif lead.label|lower == 'warm' %}badge-warning{% elif lead.label|lower == 'vip' %}badge-purple{% else %}badge-blue{% endif %}">
+                        {{ lead.label }}
+                    </span>
+                    {% else %}
+                    <span style="color:var(--text-muted);">Unlabeled</span>
+                    {% endif %}
+                </td>
+                <td>{{ lead.email or "Anonymous" }}</td>
+                <td>{{ lead.country or "Unknown" }}</td>
+                <td>{{ lead.device_type or "?" }} / {{ lead.os_family or "?" }}</td>
+                <td>{{ lead.total_visits }}</td>
+                <td>{{ lead.last_seen.strftime('%Y-%m-%d %H:%M') if lead.last_seen else '-' }}</td>
+                <td>
+                    {% if lead.is_vpn %}
+                    <span class="badge badge-danger">VPN</span>
+                    {% else %}
+                    <span class="badge badge-success">Clean</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" style="color:var(--text-muted);">No leads yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

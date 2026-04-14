@@ -56,3 +56,54 @@ def test_handle_task_preserves_existing_vpn_flags(app, monkeypatch):
         assert updated.is_proxy is True
         assert updated.is_hosting is True
         assert updated.is_mobile is False
+
+
+def test_enrich_visit_does_not_dispatch_telegram_until_complete(app, monkeypatch):
+    from server import worker
+    from server.extensions import db
+    from server.models import Link, Visit
+    from server import utils as server_utils
+
+    monkeypatch.setattr(server_utils, "get_geo_data", lambda ip: {"proxy": False, "hosting": False, "mobile": False})
+    monkeypatch.setattr(server_utils, "get_reverse_dns", lambda ip: None)
+
+    dispatched = []
+    monkeypatch.setattr(worker, "_dispatch_telegram", lambda app_obj, visit: dispatched.append(visit.id))
+
+    with app.app_context():
+        link = Link(slug="enrich-only", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        visit = Visit(link_id=link.id, ip_address="1.1.1.1", visit_complete=False)
+        db.session.add(visit)
+        db.session.commit()
+        visit_id = visit.id
+
+    worker._handle_task(app, {"type": "enrich_visit", "visit_id": visit_id, "ip": "1.1.1.1", "notify": False})
+
+    assert dispatched == []
+
+
+def test_mark_visit_complete_sets_flag_and_dispatches_telegram(app, monkeypatch):
+    from server import worker
+    from server.extensions import db
+    from server.models import Link, Visit
+
+    dispatched = []
+    monkeypatch.setattr(worker, "_dispatch_telegram", lambda app_obj, visit: dispatched.append(visit.id))
+
+    with app.app_context():
+        link = Link(slug="complete", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        visit = Visit(link_id=link.id, ip_address="1.1.1.1", visit_complete=False)
+        db.session.add(visit)
+        db.session.commit()
+        visit_id = visit.id
+
+    worker._handle_task(app, {"type": "mark_visit_complete", "visit_id": visit_id})
+
+    with app.app_context():
+        updated = db.session.get(Visit, visit_id)
+        assert updated.visit_complete is True
+    assert dispatched == [visit_id]

@@ -149,8 +149,13 @@ def shorten_with_isgd(url: str) -> Optional[str]:
     return None
 
 
-@lru_cache(maxsize=2000)
 def get_geo_data(ip: str) -> Dict[str, Any]:
+    now = time.time()
+    cached = _geo_cache.get(ip)
+    if cached is not None:
+        ts, data = cached
+        if now - ts < _GEO_TTL and data:
+            return data
     try:
         fields = "status,country,city,lat,lon,isp,org,as,proxy,hosting,mobile,query,countryCode"
         response = http_session.get(
@@ -160,6 +165,7 @@ def get_geo_data(ip: str) -> Dict[str, Any]:
         )
         payload = response.json()
         if payload.get("status") == "success":
+            _geo_cache[ip] = (now, payload)
             return payload
     except Exception as exc:
         print(f"Geo lookup failed for {ip}: {exc}")
@@ -233,6 +239,8 @@ def load_domain_list(filename: str) -> Set[str]:
 
 _domain_cache: Dict[str, Tuple[float, Set[str]]] = {}
 _DOMAIN_CACHE_TTL = 300
+_geo_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_GEO_TTL = 3600
 
 
 def _load_domain_list_cached(filename: str) -> Set[str]:

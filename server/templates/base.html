@@ -28,6 +28,7 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
     <div class="app-shell">
         {% if not hide_nav %}
         <aside class="sidebar">
@@ -44,6 +45,10 @@
                 <a href="{{ url_for('dashboard.dashboard_links.links') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.links' %}active{% endif %}">
                     <i class="fa-solid fa-link"></i>
                     Campaigns
+                </a>
+                <a href="{{ url_for('dashboard.dashboard_leads.leads_list') }}" class="nav-item {% if 'dashboard_leads' in (request.endpoint or '') %}active{% endif %}">
+                    <i class="fa-solid fa-users"></i>
+                    Leads
                 </a>
                 <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}" class="nav-item {% if 'dashboard_ai' in request.endpoint %}active{% endif %}">
                     <i class="fa-solid fa-brain"></i>
@@ -73,6 +78,30 @@
             </nav>
         </aside>
         {% endif %}
+        {% if not hide_nav %}
+        <nav class="mobile-nav">
+          <a href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}"
+             class="mobile-nav-item {% if request.endpoint == 'dashboard.dashboard_links.dashboard_home' %}active{% endif %}">
+            <i class="fa-solid fa-gauge-high"></i><span>Home</span>
+          </a>
+          <a href="{{ url_for('dashboard.dashboard_links.links') }}"
+             class="mobile-nav-item {% if request.endpoint == 'dashboard.dashboard_links.links' %}active{% endif %}">
+            <i class="fa-solid fa-link"></i><span>Links</span>
+          </a>
+          <a href="{{ url_for('dashboard.dashboard_links.create_full') }}"
+             class="mobile-nav-item mobile-nav-fab">
+            <i class="fa-solid fa-plus"></i>
+          </a>
+          <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}"
+             class="mobile-nav-item {% if 'dashboard_ai' in (request.endpoint or '') %}active{% endif %}">
+            <i class="fa-solid fa-brain"></i><span>AI</span>
+          </a>
+          <a href="{{ url_for('dashboard.dashboard_leads.leads_list') }}"
+             class="mobile-nav-item {% if 'dashboard_leads' in (request.endpoint or '') %}active{% endif %}">
+            <i class="fa-solid fa-users"></i><span>Leads</span>
+          </a>
+        </nav>
+        {% endif %}
 
         <main class="main-content" {% if hide_nav %}style="margin-left:0;width:100%;"{% endif %}>
             {% if not hide_nav %}
@@ -80,6 +109,9 @@
                 <div class="breadcrumbs">
                     {% block breadcrumb %}Dashboard{% endblock %}
                 </div>
+                <button class="hamburger-btn" id="sidebarToggle" aria-label="Menu">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
                 <div class="top-actions">
                     <form action="{{ url_for('dashboard.dashboard_stats.global_search') }}" method="GET" style="margin:0;">
                         <input type="text" name="q" class="search-bar" placeholder="Search IP, email, slug, fingerprint..." value="{{ request.args.get('q', '') }}">
@@ -111,5 +143,27 @@
         </main>
     </div>
     {% block scripts %}{% endblock %}
+    <script nonce="{{ csp_nonce|default('') }}">
+    (function(){
+      const btn=document.getElementById('sidebarToggle');
+      const overlay=document.getElementById('sidebarOverlay');
+      const sidebar=document.querySelector('.sidebar');
+      if(!btn||!sidebar||!overlay)return;
+      btn.addEventListener('click',function(){
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('active');
+      });
+      overlay.addEventListener('click',function(){
+        sidebar.classList.remove('open');
+        overlay.classList.remove('active');
+      });
+      sidebar.querySelectorAll('.nav-item').forEach(function(item){
+        item.addEventListener('click',function(){
+          sidebar.classList.remove('open');
+          overlay.classList.remove('active');
+        });
+      });
+    })();
+    </script>
 </body>
 </html>

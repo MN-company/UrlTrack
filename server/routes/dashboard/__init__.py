@@ -4,6 +4,7 @@ from flask import Blueprint
 
 from .ai_routes import bp as ai_bp
 from .exports import bp as exports_bp
+from .leads import bp as leads_bp
 from .links import bp as links_bp
 from .passkey import bp as passkey_bp
 from .security import bp as security_bp
@@ -12,6 +13,7 @@ from .stats import bp as stats_bp
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 bp.register_blueprint(links_bp)
+bp.register_blueprint(leads_bp)
 bp.register_blueprint(ai_bp)
 bp.register_blueprint(exports_bp)
 bp.register_blueprint(stats_bp)

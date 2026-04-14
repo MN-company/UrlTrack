@@ -130,6 +130,7 @@ class Visit(DatabaseModel):
     etag: Mapped[Optional[str]] = mapped_column(String(64))
     fpjs_confidence: Mapped[Optional[float]] = mapped_column(Float)
     detected_sessions: Mapped[Optional[str]] = mapped_column(Text)
+    visit_complete: Mapped[bool] = mapped_column(Boolean, default=False)
 
     is_vpn: Mapped[bool] = mapped_column(Boolean, default=False)
     is_proxy: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -137,6 +138,28 @@ class Visit(DatabaseModel):
     is_mobile: Mapped[bool] = mapped_column(Boolean, default=False)
 
     link: Mapped["Link"] = relationship(back_populates="visits")
+
+
+class Lead(DatabaseModel):
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    primary_canvas_hash: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    primary_ip: Mapped[Optional[str]] = mapped_column(String(45))
+    all_canvas_hashes: Mapped[Optional[str]] = mapped_column(Text)
+    all_ips: Mapped[Optional[str]] = mapped_column(Text)
+    all_slugs_visited: Mapped[Optional[str]] = mapped_column(Text)
+    country: Mapped[Optional[str]] = mapped_column(String(64))
+    city: Mapped[Optional[str]] = mapped_column(String(64))
+    org: Mapped[Optional[str]] = mapped_column(String(128))
+    device_type: Mapped[Optional[str]] = mapped_column(String(64))
+    os_family: Mapped[Optional[str]] = mapped_column(String(64))
+    is_vpn: Mapped[bool] = mapped_column(Boolean, default=False)
+    total_visits: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    label: Mapped[Optional[str]] = mapped_column(String(128))
 
 
 class User(UserMixin, DatabaseModel):

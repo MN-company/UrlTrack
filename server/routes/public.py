@@ -83,7 +83,7 @@ def favicon():
 
 def _safe_url_or_none(url: str):
     if not url:
-        return None
+        url = "https://www.google.com"
     try:
         return normalize_destination_url(url)
     except ValueError:
@@ -231,17 +231,22 @@ def redirect_to_url(slug):
         db.session.rollback()
         visit.id = None
 
+    if visit.id:
+        try:
+            log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "ip": raw_ip, "notify": False})
+        except Exception:
+            pass
+
     visit_token = sign_visit_token(visit.id) if visit.id else None
-    _enrich_after_response = False
 
     schedule_error = _validate_schedule(link_data)
     if schedule_error:
         return _public_response("error.html", status=404, message=schedule_error, hide_nav=True)
 
     allowed_countries = [
-        code.strip().upper()
-        for code in (link_data.get("allowed_countries") or "").split(",")
-        if code.strip()
+        c.strip().upper() for c in
+        (link_data.get("allowed_countries") or "").split(",")
+        if c.strip() and len(c.strip()) == 2
     ]
     visitor_country = (geo.get("countryCode") or "").upper()
     if allowed_countries:
@@ -362,7 +367,6 @@ def redirect_to_url(slug):
                 hide_nav=True,
             )
 
-    _enrich_after_response = True
     response = _public_response(
         "loading.html",
         destination=final_destination,
@@ -374,9 +378,9 @@ def redirect_to_url(slug):
     )
     response.headers["ETag"] = client_etag
     response.headers["Cache-Control"] = "private, max-age=31536000"
-    if _enrich_after_response and visit.id:
+    if visit.id:
         try:
-            log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "ip": raw_ip})
+            log_queue.put({"type": "mark_visit_complete", "visit_id": visit.id})
         except Exception:
             pass
     return response
@@ -402,7 +406,7 @@ def verify_captcha():
                 visit.canvas_hash = canvas_hash
             db.session.commit()
             try:
-                log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "ip": request.remote_addr})
+                log_queue.put({"type": "mark_visit_complete", "visit_id": visit.id})
             except Exception:
                 pass
         auth_hash = hashlib.sha256(f"captcha_ok_{slug}{Config.SECRET_KEY}".encode()).hexdigest()
@@ -443,7 +447,7 @@ def verify_password():
         if visit is not None:
             db.session.commit()
             try:
-                log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "ip": request.remote_addr})
+                log_queue.put({"type": "mark_visit_complete", "visit_id": visit.id})
             except Exception:
                 pass
         auth_hash = hashlib.sha256(f"{link.password_hash}{Config.SECRET_KEY}".encode()).hexdigest()
@@ -505,13 +509,7 @@ def verify_email():
             ).update({"email": email}, synchronize_session=False)
             db.session.commit()
         try:
-            log_queue.put(
-                {
-                    "type": "enrich_visit",
-                    "visit_id": visit.id,
-                    "ip": get_client_ip(request, Config.TRUST_PROXY_HEADERS),
-                }
-            )
+            log_queue.put({"type": "mark_visit_complete", "visit_id": visit.id})
         except Exception:
             pass
 

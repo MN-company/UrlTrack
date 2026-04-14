@@ -115,7 +115,78 @@ def _send_telegram_text(bot_token: str, chat_id: str, text: str) -> None:
                 timeout=5,
             )
     except Exception as exc:
-        print(f"Telegram message error: {exc}")
+        print(f"Telegram error: {exc}")
+
+
+def _dispatch_telegram(app, visit: Visit) -> None:
+    bot_token = app.config.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = app.config.get("TELEGRAM_CHAT_ID", "")
+    if bot_token and chat_id:
+        payload = _build_visit_payload(visit)
+        threading.Thread(target=_fire_telegram, args=(bot_token, chat_id, payload), daemon=True).start()
+
+
+def _upsert_lead(app, visit: Visit) -> None:
+    from .models import Lead
+    import json as _json
+
+    try:
+        lead = None
+        if visit.email:
+            lead = Lead.query.filter_by(email=visit.email).first()
+        if not lead and visit.canvas_hash:
+            lead = Lead.query.filter(Lead.all_canvas_hashes.contains(visit.canvas_hash)).first()
+            if not lead:
+                lead = Lead.query.filter_by(primary_canvas_hash=visit.canvas_hash).first()
+
+        def _append(json_str, value):
+            lst = _json.loads(json_str) if json_str else []
+            if value and value not in lst:
+                lst.append(value)
+            return _json.dumps(lst)
+
+        slug = visit.link.slug if visit.link else None
+        if lead:
+            lead.all_canvas_hashes = _append(lead.all_canvas_hashes, visit.canvas_hash)
+            lead.all_ips = _append(lead.all_ips, visit.ip_address)
+            lead.all_slugs_visited = _append(lead.all_slugs_visited, slug)
+            lead.total_visits += 1
+            lead.last_seen = visit.timestamp or datetime.utcnow()
+            if visit.email and not lead.email:
+                lead.email = visit.email
+            if visit.country:
+                lead.country = visit.country
+            if visit.city:
+                lead.city = visit.city
+            if visit.org:
+                lead.org = visit.org
+            if visit.device_type:
+                lead.device_type = visit.device_type
+            if visit.os_family:
+                lead.os_family = visit.os_family
+            lead.is_vpn = lead.is_vpn or visit.is_vpn
+        elif visit.email or visit.canvas_hash:
+            lead = Lead(
+                email=visit.email,
+                primary_canvas_hash=visit.canvas_hash,
+                primary_ip=visit.ip_address,
+                all_canvas_hashes=_json.dumps([visit.canvas_hash] if visit.canvas_hash else []),
+                all_ips=_json.dumps([visit.ip_address] if visit.ip_address else []),
+                all_slugs_visited=_json.dumps([slug] if slug else []),
+                country=visit.country,
+                city=visit.city,
+                org=visit.org,
+                device_type=visit.device_type,
+                os_family=visit.os_family,
+                is_vpn=visit.is_vpn,
+                total_visits=1,
+                last_seen=visit.timestamp or datetime.utcnow(),
+            )
+            db.session.add(lead)
+        db.session.commit()
+    except Exception as exc:
+        print(f"Lead upsert error: {exc}")
+        db.session.rollback()
 
 
 def _cleanup_visits(app):
@@ -325,6 +396,7 @@ def _handle_task(app, task):
                 visit = db.session.get(Visit, task.get("visit_id"))
                 if visit is None:
                     return
+                notify = task.get("notify", True)
 
                 from .utils import get_geo_data, get_reverse_dns
 
@@ -357,6 +429,7 @@ def _handle_task(app, task):
                         visit.email = match.email
 
                 db.session.commit()
+                _upsert_lead(app, visit)
 
                 visit_payload = _build_visit_payload(visit)
                 webhook_url = app.config.get("WEBHOOK_URL", "")
@@ -368,14 +441,14 @@ def _handle_task(app, task):
                         daemon=True,
                     ).start()
 
-                bot_token = app.config.get("TELEGRAM_BOT_TOKEN", "")
-                chat_id = app.config.get("TELEGRAM_CHAT_ID", "")
-                if bot_token and chat_id:
-                    threading.Thread(
-                        target=_fire_telegram,
-                        args=(bot_token, chat_id, visit_payload),
-                        daemon=True,
-                    ).start()
+                if notify or visit.visit_complete:
+                    _dispatch_telegram(app, visit)
+            elif task.get("type") == "mark_visit_complete":
+                visit = db.session.get(Visit, task.get("visit_id"))
+                if visit:
+                    visit.visit_complete = True
+                    db.session.commit()
+                    _dispatch_telegram(app, visit)
             else:
                 print(f"Worker ignored unknown task type: {task.get('type')}")
     except Exception as exc:

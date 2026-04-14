@@ -15,6 +15,7 @@ from ...validators import normalize_destination_url, normalize_optional_url, par
 
 
 bp = Blueprint("dashboard_links", __name__)
+SAFE_URL_DEFAULT = "https://www.google.com"
 
 
 def _mask_url_for_link(slug: str) -> str | None:
@@ -39,11 +40,16 @@ def _public_link_url(slug: str) -> str:
 
 
 def _link_form_values(form):
+    raw_countries = sanitize(form.get("allowed_countries"), 200)
+    allowed_countries_val = ",".join(
+        c.strip().upper() for c in raw_countries.replace(";", ",").split(",")
+        if c.strip() and len(c.strip()) == 2 and c.strip().isalpha()
+    ) or None
     return {
         "destination": normalize_destination_url(sanitize(form.get("destination"), 2048)),
         "ios_url": normalize_optional_url(sanitize(form.get("ios_url"), 2048)),
         "android_url": normalize_optional_url(sanitize(form.get("android_url"), 2048)),
-        "safe_url": normalize_optional_url(sanitize(form.get("safe_url"), 2048)),
+        "safe_url": normalize_optional_url(sanitize(form.get("safe_url"), 2048)) or SAFE_URL_DEFAULT,
         "block_bots": parse_bool(form.get("block_bots")) or "block_bots" in form,
         "block_vpn": parse_bool(form.get("block_vpn")) or "block_vpn" in form,
         "block_adblock": parse_bool(form.get("block_adblock")) or "block_adblock" in form,
@@ -51,7 +57,7 @@ def _link_form_values(form):
         "enable_captcha": parse_bool(form.get("enable_captcha")) or "enable_captcha" in form,
         "require_email": parse_bool(form.get("require_email")) or "require_email" in form,
         "email_policy": sanitize(form.get("email_policy"), 20) or "all",
-        "allowed_countries": sanitize(form.get("allowed_countries"), 50).upper() or None,
+        "allowed_countries": allowed_countries_val,
         "schedule_timezone": sanitize(form.get("schedule_timezone"), 64) or "UTC",
         "schedule_start_hour": int(form.get("schedule_start_hour")) if sanitize(form.get("schedule_start_hour"), 2) else None,
         "schedule_end_hour": int(form.get("schedule_end_hour")) if sanitize(form.get("schedule_end_hour"), 2) else None,
@@ -117,6 +123,7 @@ def create_link():
         link = Link(
             slug=slug,
             destination=normalize_destination_url(destination),
+            safe_url=SAFE_URL_DEFAULT,
             enable_captcha=parse_bool(request.form.get("enable_captcha")),
             require_email=parse_bool(request.form.get("require_email")),
             email_policy=sanitize(request.form.get("email_policy"), 20) or "all",

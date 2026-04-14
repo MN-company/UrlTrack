@@ -36,7 +36,9 @@ def test_redirect_with_email_gate_enqueues_only_after_verify_email(app, client, 
 
     response = client.get("/mailgate")
     assert response.status_code == 200
-    assert queue.items == []
+    assert len(queue.items) == 1
+    assert queue.items[0]["type"] == "enrich_visit"
+    assert queue.items[0]["notify"] is False
 
     with app.app_context():
         visit = Visit.query.filter_by(link_id=link_id).order_by(Visit.id.desc()).first()
@@ -48,9 +50,9 @@ def test_redirect_with_email_gate_enqueues_only_after_verify_email(app, client, 
         follow_redirects=False,
     )
     assert verify_response.status_code == 302
-    assert len(queue.items) == 1
-    assert queue.items[0]["type"] == "enrich_visit"
-    assert queue.items[0]["visit_id"] == visit_id
+    assert len(queue.items) == 2
+    assert queue.items[1]["type"] == "mark_visit_complete"
+    assert queue.items[1]["visit_id"] == visit_id
 
 
 def test_verify_email_backfills_same_canvas_hash(app, client, monkeypatch):
@@ -100,7 +102,9 @@ def test_redirect_geo_allowlist_fail_closed_marks_visit(app, client, monkeypatch
     response = client.get("/geo")
     assert response.status_code == 403
     assert b"Unable to verify your location." in response.data
-    assert queue.items == []
+    assert len(queue.items) == 1
+    assert queue.items[0]["type"] == "enrich_visit"
+    assert queue.items[0]["notify"] is False
 
     with app.app_context():
         visit = Visit.query.filter_by(link_id=link_id).order_by(Visit.id.desc()).first()
@@ -124,5 +128,7 @@ def test_block_bots_does_not_block_cloud_visitor_without_block_vpn(app, client, 
 
     response = client.get("/cloud-ok")
     assert response.status_code == 200
-    assert len(queue.items) == 1
+    assert len(queue.items) == 2
     assert queue.items[0]["type"] == "enrich_visit"
+    assert queue.items[0]["notify"] is False
+    assert queue.items[1]["type"] == "mark_visit_complete"
