@@ -1,432 +1,255 @@
 # UrlTrack
 
-UrlTrack is a self-hosted Flask platform for controlled link routing, visit analytics, fingerprint correlation, and operator alerts. It can gate access with consent, email, password, captcha, geo and VPN checks, then record browser and network telemetry for later investigation in the dashboard.
+UrlTrack is a self-hosted link tracking app built with Flask. You create a link, decide who should get through, and watch what happens after the click: country, device, fingerprint signals, dwell time, email capture, VPN hints, and cross-visit correlations. It is meant for controlled campaigns, demos, internal investigations, and anyone who wants more context than a normal shortener gives.
 
-## Current feature set
+This repo is the current `v2` line of UrlTrack. It includes the dashboard, public gate pages, background enrichment worker, Telegram alerts, AI analyst, Docker support, and first-run admin setup.
 
-- Link routing with per-link controls for captcha, password, email capture, bot blocking, VPN blocking, country allowlists, scheduling, mobile targeting, safe fallback URLs, and click limits
-- Visit analytics with IP, hostname, geography, device type, OS family, browser signals, canvas fingerprint, ETag, dwell time, and referrer data
-- Device investigation pages keyed by `canvas_hash` or `etag`
-- Global graph view that correlates `canvas_hash -> slug -> email`
-- AI analyst console with `@visit:`, `@hash:`, `@link:`, `@ip:`, and `@email:` shortcuts
-- First-run admin bootstrap with email/password plus optional TOTP and passkeys
-- Background enrichment worker with optional Telegram alerts for each enriched visit
-- Deployment assets for Docker, Compose, nginx, fail2ban, systemd, and Fly.io
+## What UrlTrack does
 
-## Repository layout
+At its core, UrlTrack sits between a public link and its destination.
 
-- `server/` Flask application, models, routes, worker, templates, static assets
-- `migrations/` Alembic revisions
-- `deploy/` nginx, fail2ban, systemd, and bootstrap scripts
-- `Dockerfile`, `docker-compose.yml`, `fly.toml` deployment entrypoints
+You can protect a link with:
 
-## Quickstart
+- captcha
+- password
+- email capture
+- country allowlist
+- VPN blocking
+- consent gate
+- schedule windows
 
-### 1. Clone and install
+After the visitor passes those checks, UrlTrack records the visit and enriches it in the background. From the dashboard you can inspect individual campaigns, trace repeated visitors across links, view device profiles, and keep an eye on leads that emerge from repeated visits.
+
+## Why this project exists
+
+Most trackers either feel too light or too invasive. UrlTrack aims for a middle ground: clear operator controls, useful telemetry, a dashboard that helps you reason about visits, and deployment options simple enough to run on your own infrastructure.
+
+If you searched for **UrlTrack**, this is the main repository for the Flask-based self-hosted version.
+
+## Quick start
+
+If you want least-friction local setup:
 
 ```bash
 git clone https://github.com/MN-company/UrlTrack.git
 cd UrlTrack
 git checkout v2
-python3 -m venv venv
-source venv/bin/activate
-pip install -r server/requirements.txt
+./install.sh --run
 ```
 
-### 2. Create `.env`
+That command will:
 
-```bash
-cp .env.example .env
-```
-
-At minimum set:
-
-```env
-SECRET_KEY=replace-with-long-random-secret
-SERVER_URL=http://127.0.0.1:8000
-DATABASE_URL=sqlite:///data/ulrtrack.db
-```
-
-### 3. Run migrations
-
-```bash
-SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
-```
-
-### 4. Run locally
-
-```bash
-./run.sh
-```
+- create `.env` if missing
+- generate a strong `SECRET_KEY`
+- create `venv/`
+- install Python dependencies
+- run database migrations
+- start the local server
 
 Then open:
 
 - `http://127.0.0.1:8000/`
-- first boot will redirect to `http://127.0.0.1:8000/setup`
+- first boot will send you to `http://127.0.0.1:8000/setup`
 
-## First-run admin setup
+## Docker mode
 
-1. Open `/setup`
-2. Create first admin with email and password
-3. Store generated server secret code shown once after setup
-4. Login to dashboard
-5. Optionally enable TOTP and register passkeys from Security settings
-
-That server secret is only for creating more admins later. It is not used for normal login.
-
-## Environment variables
-
-### Required
-
-- `SECRET_KEY`
-- `SERVER_URL`
-- `DATABASE_URL`
-
-### Core runtime
-
-- `ANONYMIZE_IP`
-- `VISIT_RETENTION_DAYS`
-- `TRUST_PROXY_HEADERS`
-- `MASK_WITH_ISGD`
-- `REQUIRE_VISIT_TOKEN`
-- `VISIT_TOKEN_TTL_SECONDS`
-- `SKIP_BACKGROUND_WORKER`
-
-### Public gate behavior
-
-- `REQUIRE_CONSENT`
-- `ALLOW_PARTIAL_EMAIL_CAPTURE`
-- `CONSENT_TTL_DAYS`
-- `TURNSTILE_SITE_KEY`
-- `TURNSTILE_SECRET_KEY`
-
-### AI
-
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL`
-
-### Telegram alerts
-
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-
-### Rate limiting and abuse controls
-
-- `RATE_LIMIT_REDIRECT`
-- `RATE_LIMIT_AUTH`
-- `MALICIOUS_IP_REFRESH_SECONDS`
-- `MALICIOUS_IP_MIN_COUNT`
-
-## External integrations and API setup
-
-### 1. Gemini API for AI Analyst
-
-Used for:
-
-- AI console answers
-- visit and graph-oriented context lookups
-- streaming responses in dashboard AI view
-
-Setup:
-
-1. Go to Google AI Studio
-2. Create or copy an API key
-3. Put it in `.env`:
-
-```env
-GEMINI_API_KEY=your-key
-GEMINI_MODEL=gemini-2.0-flash
-```
-
-Notes:
-
-- If `GEMINI_API_KEY` is empty, AI routes stay available but generation should be treated as disabled
-- Model name is runtime-configurable from dashboard settings
-
-### 2. Cloudflare Turnstile for captcha gate
-
-Used for:
-
-- captcha-protected public link visits
-- `captcha.html` verification flow
-
-Setup:
-
-1. Create a Turnstile site in Cloudflare dashboard
-2. Add your local or production domain
-3. Copy site key and secret key into `.env`
-
-```env
-TURNSTILE_SITE_KEY=your-site-key
-TURNSTILE_SECRET_KEY=your-secret-key
-```
-
-Notes:
-
-- If either value is empty, captcha-protected links cannot validate challenges
-- CSP already allows Turnstile script and frame origins
-
-### 3. Telegram Bot API for native visit alerts
-
-Used for:
-
-- real-time notification each time worker finishes `enrich_visit`
-
-Message includes:
-
-- slug
-- city and country
-- email if known
-- device and OS
-- VPN status
-- timestamp
-
-Setup:
-
-1. Open Telegram and message `@BotFather`
-2. Run `/newbot`
-3. Create bot name and username
-4. Copy bot token into `.env`
-
-```env
-TELEGRAM_BOT_TOKEN=123456:ABCDEF...
-```
-
-5. Get target chat ID
-
-Private chat method:
-
-1. Start a conversation with your bot
-2. Send at least one message to bot
-3. Open:
-
-`https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-
-4. Read `message.chat.id`
-5. Put it in `.env`
-
-```env
-TELEGRAM_CHAT_ID=123456789
-```
-
-Group method:
-
-1. Add bot to group
-2. Send one message in group
-3. Call `getUpdates`
-4. Use group chat id, often negative, for example `-100xxxxxxxxxx`
-
-Notes:
-
-- If either `TELEGRAM_BOT_TOKEN` or `TELEGRAM_CHAT_ID` is empty, Telegram alerts are disabled
-- Delivery happens in a daemon thread after visit enrichment, so worker queue is not blocked by Telegram latency
-
-### 4. is.gd public masking
-
-Used for:
-
-- optional public short masking when `MASK_WITH_ISGD=true`
-
-Setup:
-
-- no API key required
-- toggle from dashboard settings or `.env`
-
-Notes:
-
-- masking is best-effort
-- failures do not block link creation
-
-### 5. IP geolocation and malicious IP feeds
-
-Used for:
-
-- `ip-api.com` geolocation lookup during enrichment
-- GitHub-hosted malicious IP list refresh
-
-Setup:
-
-- no local credentials required in current implementation
-
-Notes:
-
-- these are network-dependent
-- if lookup fails, visit is still recorded and worker continues
-
-## Dashboard areas
-
-### Command Center
-
-- recent links
-- recent visits
-- top-level activity summary
-
-### Campaign analytics
-
-Per-slug stats page includes:
-
-- 7-day visit chart
-- top countries
-- top referrers
-- visit log
-- average engagement from `dwell_ms`
-- engaged visit count where dwell time is greater than 5 seconds
-
-### Global Intel
-
-- search across slug, IP, email, fingerprint, city, country, org, hostname
-- cross-visit timeline
-- graph view for `canvas_hash -> slug -> email`
-
-### Settings
-
-Settings page now manages:
-
-- domain deny lists for disposable and privacy email providers
-- runtime values written into `.env`
-- live runtime refresh for values that do not require restart
-
-Editable from dashboard:
-
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL`
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- `MASK_WITH_ISGD`
-- `TRUST_PROXY_HEADERS`
-- `VISIT_RETENTION_DAYS`
-
-`SERVER_URL` is written to `.env` but restart is required.
-
-## Public request flow
-
-For each visit:
-
-1. Resolve slug to link
-2. Create initial `Visit` row
-3. Sign visit token for browser callbacks
-4. Apply consent, geo, bot, VPN, captcha, password, and email checks
-5. Serve `loading.html`
-6. Browser posts beacon data
-7. Browser posts dwell time through `/api/dwell`
-8. Redirect to final destination
-9. Worker enriches visit
-10. Worker optionally sends Telegram notification
-
-## Database and migrations
-
-Schema is controlled by Flask-Migrate and Alembic only.
-
-Common commands:
+If you prefer to run UrlTrack with Docker instead of a local Python environment:
 
 ```bash
-SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
-SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db migrate -m "describe change"
+./install.sh --docker --run
 ```
 
-Current manual follow-up revision for engagement tracking:
+That mode prepares `.env`, keeps SQLite data in `server/data/`, and starts the stack with `docker compose up --build`.
 
-- `migrations/versions/f2b6c0a33d21_add_dwell_ms.py`
-
-## Docker
-
-### Start
+If you want Docker without starting immediately:
 
 ```bash
-docker compose down --remove-orphans
+./install.sh --docker
 docker compose up --build
 ```
 
-Compose mounts:
+The container runs Alembic migrations on boot and then starts Gunicorn on port `8000`.
 
-- local `./server/data`
-- container `/app/server/data`
+## Manual setup
 
-Compose also forces:
-
-```env
-DATABASE_URL=sqlite:////app/server/data/ulrtrack.db
-```
-
-This keeps SQLite on mounted storage.
-
-Container boot command:
+If you do not want installer flow:
 
 ```bash
-SKIP_BACKGROUND_WORKER=1 python -m flask --app server:create_app db upgrade && gunicorn --bind 0.0.0.0:8000 --workers 1 server.wsgi:app
+python3 -m venv venv
+source venv/bin/activate
+pip install -r server/requirements.txt
+cp .env.example .env
+SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
+./run.sh
 ```
 
-`--workers 1` is intentional because SQLite does not behave well with multiple write-heavy workers.
+At minimum, `.env` should contain:
 
-## Linux deployment
+```env
+SECRET_KEY=replace-me
+SERVER_URL=http://127.0.0.1:8000
+DATABASE_URL=sqlite:///data/ulrtrack.db
+```
 
-Reference files:
+## First run
 
+On a clean database:
+
+1. open `/setup`
+2. create first admin account
+3. save the one-time admin secret shown after setup
+4. sign in to dashboard
+5. optionally enable TOTP or passkeys from security settings
+
+That one-time admin secret is only for future admin creation. It is not part of normal login.
+
+## Main areas of dashboard
+
+### Home
+
+Campaign summary, recent links, recent visits, fast access to common actions.
+
+### Campaigns
+
+Per-link analytics page with visit charts, referrers, countries, engagement metrics, and visit log.
+
+### Graph
+
+A visual graph connecting `canvas_hash`, visited slugs, and known emails.
+
+### Leads
+
+A lightweight lead view that groups repeated visits by fingerprint or email so you can inspect history in one place.
+
+### AI Analyst
+
+An assistant view that can reason over visits and search context using commands like `@visit:`, `@hash:`, `@link:`, `@ip:`, and `@email:`.
+
+### Settings
+
+Manage runtime values, domain lists, Telegram credentials, AI model settings, and other operational toggles.
+
+## Optional integrations
+
+None of these are mandatory for basic tracking.
+
+### Gemini
+
+Used by AI Analyst.
+
+Add to `.env`:
+
+```env
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+If `GEMINI_API_KEY` is empty, AI features stay visible but generation is effectively disabled.
+
+### Telegram
+
+Used for visit notifications and digests.
+
+1. create a bot with `@BotFather`
+2. send at least one message to the bot
+3. call:
+
+```text
+https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+```
+
+4. copy the chat id into `.env`
+
+```env
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+### Cloudflare Turnstile
+
+Used only if you enable captcha gate on links.
+
+```env
+TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET_KEY=
+```
+
+### is.gd
+
+Optional masking for public links when `MASK_WITH_ISGD=true`. No API key required.
+
+## Docker, Fly.io, Linux deploy
+
+This repo includes deploy assets for a few different styles:
+
+- `Dockerfile`
+- `docker-compose.yml`
+- `fly.toml`
 - `deploy/nginx/ulrtrack.conf`
-- `deploy/fail2ban/ulrtrack.conf`
-- `deploy/fail2ban/filter.d/ulrtrack-auth.conf`
-- `deploy/fail2ban/filter.d/ulrtrack-scan.conf`
 - `deploy/systemd/ulrtrack.service`
-- `deploy/scripts/setup.sh`
+- `deploy/fail2ban/...`
 
-Suggested sequence:
+For Fly.io, `fly.toml` is already configured for auto-start and auto-stop machines. For plain Linux, use the systemd and nginx files in `deploy/` as starting point, not as magic one-click infra.
 
-1. Clone repo to `/opt/ulrtrack`
-2. Create `.env`
-3. Install venv and requirements
-4. Run migration upgrade
-5. Enable systemd service
-6. Reload nginx and fail2ban
+## Useful commands
 
-## CLI helpers
+Run migrations:
 
-Create additional admin from CLI:
+```bash
+SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
+```
+
+Create another admin from CLI:
 
 ```bash
 python -m server.create_admin
 ```
 
-If `which flask` points outside `venv`, always prefer:
+Run local server with repo interpreter:
 
 ```bash
-./venv/bin/python -m flask --app server:create_app <command>
+./venv/bin/python -m flask --app server:create_app run --host=127.0.0.1 --port=8000
 ```
+
+## Repo structure
+
+- `server/` Flask app, routes, models, worker, templates, static assets
+- `migrations/` Alembic revisions
+- `deploy/` nginx, fail2ban, systemd, helper scripts
+- `tests/` pytest suite
 
 ## Troubleshooting
 
-### `/` returns 404 but `/setup` works
+### Root returns 404 or wrong app boots
 
-You are probably running stale process or wrong interpreter. Restart with repo venv:
+Usually wrong interpreter or stale process. Use repo venv explicitly:
 
 ```bash
 pkill -f "flask --app server:create_app run" || true
 ./venv/bin/python -m flask --app server:create_app run --host=127.0.0.1 --port=8000
 ```
 
-### Docker shows `RequestsDependencyWarning`
+### `flask db` says command not found
 
-That warning is noisy but not fatal if container continues to:
+Use repo interpreter, not global `flask`:
 
-- run Alembic upgrade
-- start Gunicorn
-- listen on `0.0.0.0:8000`
+```bash
+./venv/bin/python -m flask --app server:create_app db upgrade
+```
 
-Check with:
+### Telegram alerts do not arrive
+
+Check bot token, chat id, and whether bot has received at least one message from target chat.
+
+### Docker starts but shows warning from `requests`
+
+If app still migrates and Gunicorn comes up, that warning is noisy but not fatal. Check:
 
 ```bash
 docker compose ps
 docker compose logs --tail=200
 ```
 
-### Telegram alerts do not arrive
+## Final note
 
-Check:
-
-1. `TELEGRAM_BOT_TOKEN` correct
-2. `TELEGRAM_CHAT_ID` correct
-3. bot has already received at least one message from target chat
-4. worker is running
-
-## License
-
-Use according to repository owner policy.
+UrlTrack is opinionated software. It is meant to be run deliberately, with clear ownership and clear intent. If that matches how you work, this repo should feel straightforward once it is up.
