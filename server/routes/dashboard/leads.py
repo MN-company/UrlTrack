@@ -1,108 +1,56 @@
-from flask import Blueprint, render_template, request, redirect, flash, url_for, make_response
-from flask_login import login_required, current_user
 import json
-import csv
-from io import StringIO
-from collections import defaultdict
 
-from ...models import Lead, Visit
-from ...extensions import db, log_queue
-from ...config import Config
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask_login import login_required
 
-
-bp = Blueprint('dashboard_leads', __name__)
-
-@bp.route('/contacts', methods=['GET', 'POST'])
-@login_required
-def contacts():
-    if request.method == 'POST':
-        try:
-            from ...services.lead_service import LeadService
-            LeadService.create_lead(
-                email=request.form.get('email'),
-                name=request.form.get('name'),
-                notes=request.form.get('notes')
-            )
-            flash(f"Lead {request.form.get('email')} added.", 'success')
-        except ValueError as e:
-            flash(str(e), 'warning')
-            
-        return redirect(url_for('dashboard.dashboard_leads.contacts'))
-
-    leads = Lead.query.order_by(Lead.created_at.desc()).all()
-    return render_template('contacts.html', leads=leads)
+from ...extensions import db
+from ...models import Lead
+from ...utils import sanitize
 
 
+bp = Blueprint("dashboard_leads", __name__)
 
-@bp.route('/merge_candidates')
-@login_required
-def merge_candidates():
-    """Find potential duplicate leads using Service."""
-    from ...services.lead_service import LeadService
-    candidates = LeadService.get_merge_candidates()
-    return render_template('merge_candidates.html', candidates=candidates)
 
-@bp.route('/merge_leads', methods=['POST'])
-@login_required
-def merge_leads():
-    """Merge leads using Service."""
-    primary_id = request.form.get('primary_id', type=int)
-    secondary_ids = request.form.getlist('secondary_ids')
-    
-    if not primary_id or not secondary_ids:
-        flash('Invalid selection.', 'error')
-        return redirect(url_for('dashboard.dashboard_leads.merge_candidates'))
-        
+def _json_list(value):
+    if not value:
+        return []
     try:
-        from ...services.lead_service import LeadService
-        count = LeadService.merge_leads(primary_id, secondary_ids)
-        flash(f'Merged {count} leads successfully.', 'success')
-        return redirect(url_for('dashboard.dashboard_leads.lead_profile', lead_id=primary_id))
-    except Exception as e:
-        flash(f'Merge failed: {str(e)}', 'error')
-        return redirect(url_for('dashboard.dashboard_leads.merge_candidates'))
+        data = json.loads(value)
+    except (TypeError, ValueError):
+        return []
+    return data if isinstance(data, list) else []
 
-@bp.route('/contacts/export_csv')
+
+@bp.route("/leads")
 @login_required
-def export_contacts_csv():
-    from ...services.lead_service import LeadService
-    csv_data = LeadService.export_csv()
-    
-    output = make_response(csv_data)
-    output.headers["Content-Disposition"] = "attachment; filename=contacts_export.csv"
-    output.headers["Content-type"] = "text/csv"
-    return output
+def leads_list():
+    leads = Lead.query.order_by(Lead.last_seen.desc().nullslast(), Lead.updated_at.desc()).all()
+    return render_template("leads.html", leads=leads)
 
-@bp.route('/lead/<int:lead_id>', methods=['GET', 'POST'])
+
+@bp.route("/leads/<int:lead_id>")
 @login_required
-def lead_profile(lead_id):
-    lead = Lead.query.get_or_404(lead_id)
-    
-    if request.method == 'POST':
-        lead.name = request.form.get('name')
-        lead.notes = request.form.get('notes')
-        lead.tags = request.form.get('tags')
-        db.session.commit()
-        flash('Profile updated.', 'success')
-        return redirect(url_for('dashboard.dashboard_leads.lead_profile', lead_id=lead_id))
-        
-    # Uses Service for graph data
-    from ...services.lead_service import LeadService
-    graph_data = LeadService.build_identity_graph(lead)
+def lead_detail(lead_id):
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        abort(404)
+    return render_template(
+        "lead_detail.html",
+        lead=lead,
+        canvas_hashes=_json_list(lead.all_canvas_hashes),
+        ips=_json_list(lead.all_ips),
+        slugs=_json_list(lead.all_slugs_visited),
+    )
 
 
-    # OSINT Enrichment (REMOVED) - Deep Data Only
-    
-    # Custom Fields (JSON)
-    cf = lead.custom_fields_data
-
-    return render_template('profile.html', 
-                          lead=lead, 
-                          devices=graph_data['devices'],
-                          related_leads=graph_data['related_leads'],
-                          ips=graph_data['ips'],
-                          canvas_hashes=graph_data['canvas_hashes'],
-                          timeline_visits=graph_data['visits']
-                          )
-
-
+@bp.route("/leads/<int:lead_id>/update", methods=["POST"])
+@login_required
+def lead_update(lead_id):
+    lead = db.session.get(Lead, lead_id)
+    if not lead:
+        abort(404)
+    lead.notes = sanitize(request.form.get("notes", ""), 2000)
+    lead.label = sanitize(request.form.get("label", ""), 128)
+    db.session.commit()
+    flash("Lead updated.", "success")
+    return redirect(url_for("dashboard.dashboard_leads.lead_detail", lead_id=lead_id))

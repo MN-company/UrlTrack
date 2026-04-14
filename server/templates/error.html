@@ -17,13 +17,4 @@
         </div>
     </div>
 </div>
-
-<!-- V16 Deep Fingerprinting (Always) -->
-<script src="/static/js/metrics.js"></script>
-<script>
-    {% if visit_id %}
-    // Fire & Forget (No Redirect)
-    sendMetrics("{{ visit_id }}", null, false);
-    {% endif %}
-</script>
 {% endblock %}

@@ -1,209 +1,149 @@
-from flask import Flask
+from pathlib import Path
+
+from flask import Flask, redirect, request, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 from .config import Config
-from .extensions import db, login_manager, limiter, csrf
+from .extensions import cache, csrf, db, limiter, login_manager, migrate
+from .models import User
 from .worker import start_worker
-import os
-from datetime import timedelta # Added for SESSION_COOKIE_LIFETIME
 
-def create_app():
+DISPOSABLE_DEFAULTS = [
+    "tempmail.com",
+    "10minutemail.com",
+    "guerrillamail.com",
+    "mailinator.com",
+    "throwaway.email",
+    "getnada.com",
+    "temp-mail.org",
+    "fakeinbox.com",
+    "trashmail.com",
+    "maildrop.cc",
+    "yopmail.com",
+    "sharklasers.com",
+    "dispostable.com",
+    "mailnesia.com",
+    "spamgourmet.com",
+    "jetable.org",
+    "anonymbox.net",
+    "tempmailaddress.com",
+    "emailondeck.com",
+    "mintemail.com",
+]
+
+PRIVACY_DEFAULTS = [
+    "icloud.com",
+    "me.com",
+    "protonmail.com",
+    "proton.me",
+    "tutanota.com",
+    "tutamail.com",
+]
+
+
+def _seed_default_domain_lists(data_dir: Path) -> None:
+    for filename, defaults in [
+        ("disposable_domains.txt", DISPOSABLE_DEFAULTS),
+        ("privacy_domains.txt", PRIVACY_DEFAULTS),
+    ]:
+        path = data_dir / filename
+        if not path.exists() or path.stat().st_size == 0:
+            path.write_text("\n".join(defaults), encoding="utf-8")
+
+
+def create_app() -> Flask:
     app = Flask(__name__)
-    app.config.from_object(Config)
+    app.config.from_mapping(Config.as_flask_config())
+    (Path(app.root_path) / "data").mkdir(parents=True, exist_ok=True)
+    _seed_default_domain_lists(Path(app.root_path) / "data")
 
-    # Security Headers & Session Hardening (configurable via Config)
-    app.config.update(
-        SESSION_COOKIE_SECURE=app.config.get('SESSION_COOKIE_SECURE', True),
-        SESSION_COOKIE_HTTPONLY=app.config.get('SESSION_COOKIE_HTTPONLY', True),
-        SESSION_COOKIE_SAMESITE=app.config.get('SESSION_COOKIE_SAMESITE', 'Lax'),
-        PERMANENT_SESSION_LIFETIME=app.config.get('PERMANENT_SESSION_LIFETIME', timedelta(hours=24)),
-    )
+    if Config.TRUST_PROXY_HEADERS:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
-    # Initialize extensions
     db.init_app(app)
+    cache.init_app(
+        app,
+        config={
+            "CACHE_TYPE": "SimpleCache",
+            "CACHE_DEFAULT_TIMEOUT": Config.CACHE_DEFAULT_TIMEOUT,
+        },
+    )
+    migrate.init_app(app, db)
     login_manager.init_app(app)
-    login_manager.login_view = 'auth.login'
+    login_manager.login_view = "auth.login"
     limiter.init_app(app)
-    csrf.init_app(app) # Enable CSRF Protection
+    csrf.init_app(app)
 
-    # V29: Markdown Support for AI
-    @app.template_filter('markdown')
+    @login_manager.user_loader
+    def load_user(user_id):
+        try:
+            return db.session.get(User, int(user_id))
+        except (TypeError, ValueError):
+            return None
+
+    @app.template_filter("markdown")
     def render_markdown(text):
-        if not text: return ""
+        if not text:
+            return ""
         try:
             import markdown
+
             return markdown.markdown(text)
         except ImportError:
-            # Fallback: Simple line breaks if lib missing
-            return text.replace('\n', '<br>')
+            return text.replace("\n", "<br>")
 
-    # Auto-Migrate (Production Fix)
-    with app.app_context():
-        import sqlite3
-        try:
-            db_path = app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
-            conn = sqlite3.connect(db_path)
-            c = conn.cursor()
-            try: c.execute("ALTER TABLE lead ADD COLUMN scan_status VARCHAR(20) DEFAULT 'idle'")
-            except: pass
-            try: c.execute("ALTER TABLE lead ADD COLUMN last_scan DATETIME")
-            except: pass
-            
-            # V22 Overhaul Migrations
-            try: c.execute("ALTER TABLE lead ADD COLUMN tags VARCHAR(256) DEFAULT ''")
-            except: pass
-            try: c.execute("ALTER TABLE lead ADD COLUMN custom_fields TEXT DEFAULT '{}'")
-            except: pass
-            
-            # V23 Email Policy
-            try: c.execute("ALTER TABLE link ADD COLUMN email_policy VARCHAR(20) DEFAULT 'all'")
-            except: pass
-            
-            # V24 Pro Fingerprinting
-            try: c.execute("ALTER TABLE visit ADD COLUMN battery_level VARCHAR(20)")
-            except: pass
-            try: c.execute("ALTER TABLE visit ADD COLUMN cpu_cores INTEGER")
-            except: pass
-            try: c.execute("ALTER TABLE visit ADD COLUMN ram_gb REAL")
-            except: pass
-            
-            # V27 ETag
-            try: c.execute("ALTER TABLE visit ADD COLUMN etag VARCHAR(64)")
-            except: pass
-            
-            # V45 Senior Fingerprinting
-            try: c.execute("ALTER TABLE visit ADD COLUMN screen_res VARCHAR(32)")
-            except: pass
-            try: c.execute("ALTER TABLE visit ADD COLUMN timezone VARCHAR(64)")
-            except: pass
-            
-            # V28 IP Identity
-            try: c.execute("ALTER TABLE visit ADD COLUMN org VARCHAR(128)")
-            except: pass
-            
-            # V29 Reverse DNS
-            try: c.execute("ALTER TABLE visit ADD COLUMN hostname VARCHAR(256)")
-            except: pass
+    @app.before_request
+    def enforce_first_run_setup():
+        if request.endpoint is None:
+            return None
+        if request.endpoint.startswith("static"):
+            return None
+        if request.blueprint in {"public", "api"}:
+            return None
+        setup_allowed = {
+            "auth.setup",
+            "auth.show_setup_secret",
+            "auth.login",
+            "auth.logout",
+            "auth.passkey_auth_options",
+            "auth.passkey_auth_verify",
+        }
+        if request.endpoint in setup_allowed:
+            return None
 
-            # V30 Country Code
-            try: c.execute("ALTER TABLE visit ADD COLUMN country_code VARCHAR(2)")
-            except: pass
+        user_count = User.query.count()
+        if user_count == 0 and Config.ADMIN_BOOTSTRAP_ENABLED:
+            return redirect(url_for("auth.setup"))
+        return None
 
-            # V61 Visit Notes
-            try: c.execute("ALTER TABLE visit ADD COLUMN notes TEXT")
-            except: pass
-            
-            # V38 AI Architect (Custom Landing)
-            try: c.execute("ALTER TABLE link ADD COLUMN custom_html TEXT")
-            except: pass
-            
-            # V39 Session Detector
-            try: c.execute("ALTER TABLE visit ADD COLUMN detected_sessions TEXT")
-            except: pass
-            
-            conn.commit()
-            conn.close()
-        except Exception: pass # This catches errors in the sqlite3 operations
-        
-        # V39 Session Detector (Fingerprint.js Pro)
-
-        try:
-            from sqlalchemy import text
-            db.session.execute(text("ALTER TABLE visit ADD COLUMN fpjs_confidence FLOAT"))
-            db.session.commit()
-            print("✅ Added Fingerprint.js Pro columns to Visit table")
-        except Exception as e:
-            pass  # Column already exists
-
-        # V55: Performance Indexes (Blazing Fast Optimization)
-        try:
-            db.session.execute(text("CREATE INDEX IF NOT EXISTS idx_visit_link_id ON visit (link_id)"))
-            db.session.execute(text("CREATE INDEX IF NOT EXISTS idx_visit_timestamp ON visit (timestamp)"))
-            db.session.execute(text("CREATE INDEX IF NOT EXISTS idx_visit_ip ON visit (ip_address)"))
-            db.session.commit()
-            print("✅ Performance indexes applied")
-        except Exception as e:
-            print(f"⚠️ Index creation warning: {e}")
-        
-        # V60: VPN Detection columns
-        try:
-            db.session.execute(text("ALTER TABLE visit ADD COLUMN is_vpn BOOLEAN DEFAULT 0"))
-            db.session.commit()
-        except: pass
-        try:
-            db.session.execute(text("ALTER TABLE visit ADD COLUMN is_proxy BOOLEAN DEFAULT 0"))
-            db.session.commit()
-        except: pass
-        try:
-            db.session.execute(text("ALTER TABLE visit ADD COLUMN is_hosting BOOLEAN DEFAULT 0"))
-            db.session.commit()
-        except: pass
-        try:
-            db.session.execute(text("ALTER TABLE visit ADD COLUMN is_mobile BOOLEAN DEFAULT 0"))
-            db.session.commit()
-        except: pass
-    
-    # V51: User table migration
-    # V51: User table migration (Robust)
-    with app.app_context():
-        try:
-            from .models import User
-            db.create_all()  # Creates User table if it doesn't exist
-            
-            # Add missing columns for existing tables
-            from sqlalchemy import text, inspect
-            inspector = inspect(db.engine)
-            if 'user' in inspector.get_table_names():
-                columns = [c['name'] for c in inspector.get_columns('user')]
-                with db.engine.connect() as conn:
-                    if 'totp_secret' not in columns:
-                        conn.execute(text("ALTER TABLE user ADD COLUMN totp_secret VARCHAR(32)"))
-                    if 'totp_enabled' not in columns:
-                        conn.execute(text("ALTER TABLE user ADD COLUMN totp_enabled BOOLEAN DEFAULT 0"))
-                    if 'backup_codes' not in columns:
-                        conn.execute(text("ALTER TABLE user ADD COLUMN backup_codes TEXT"))
-                    if 'passkey_credentials' not in columns:
-                        conn.execute(text("ALTER TABLE user ADD COLUMN passkey_credentials TEXT"))
-                    conn.commit()
-            print("✅ User table verified")
-        except Exception as e:
-            print(f"⚠️  User table migration error: {e}")
-    
-    # Register Blueprints
-    from .routes import auth, api, public
+    from .routes import api, auth, public
     from .routes.dashboard import bp as dashboard_bp
-    
+
     app.register_blueprint(auth.bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(api.bp)
-    # Catch-all MUST be last
     app.register_blueprint(public.bp)
-    
-    # Global Filters/Headers
+
     @app.after_request
-    def add_security_headers(response):
-        # Remove server fingerprint
-        response.headers.pop('Server', None)
-        # Add security headers
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'DENY'
-        response.headers['X-XSS-Protection'] = '1; mode=block'
-        if app.config.get('SESSION_COOKIE_SECURE', False):
-            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-        # Production-ready CSP: Allows external fonts, scripts, and images needed by the app
-        response.headers['Content-Security-Policy'] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://unpkg.com; "
-            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
-            "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
-            "img-src 'self' data: blob: https://flagcdn.com https://*.gravatar.com; "
-            "connect-src 'self' https://challenges.cloudflare.com; "
-            "frame-src https://challenges.cloudflare.com;"
-        )
+    def security_headers(response):
+        response.headers.pop("Server", None)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        if "Content-Security-Policy" not in response.headers and Config.CSP_STRICT:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+                "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+                "img-src 'self' data: blob: https://flagcdn.com https://*.gravatar.com; "
+                "connect-src 'self' https://challenges.cloudflare.com; "
+                "frame-src https://challenges.cloudflare.com;"
+            )
         return response
 
-    # Start Worker
-    start_worker(app)
-
+    if not Config.SKIP_BACKGROUND_WORKER:
+        start_worker(app)
     return app
-
-# For legacy compatibility if someone runs 'python -m server'
-app = create_app()

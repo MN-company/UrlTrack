@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-grid">
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h2>{{ lead.label or "Lead Detail" }}</h2>
+                <p style="color:var(--text-muted); margin:6px 0 0;">{{ lead.email or "Anonymous visitor cluster" }}</p>
+            </div>
+            {% if lead.is_vpn %}
+            <span class="badge badge-danger">VPN</span>
+            {% else %}
+            <span class="badge badge-success">Clean</span>
+            {% endif %}
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px;">
+            <div><strong>Email</strong><div>{{ lead.email or "-" }}</div></div>
+            <div><strong>Country / City</strong><div>{{ lead.country or "-" }}{% if lead.city %} · {{ lead.city }}{% endif %}</div></div>
+            <div><strong>Org</strong><div>{{ lead.org or "-" }}</div></div>
+            <div><strong>Device</strong><div>{{ lead.device_type or "-" }} / {{ lead.os_family or "-" }}</div></div>
+            <div><strong>Total Visits</strong><div>{{ lead.total_visits }}</div></div>
+            <div><strong>Last Seen</strong><div>{{ lead.last_seen.strftime('%Y-%m-%d %H:%M:%S') if lead.last_seen else '-' }}</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-bottom:12px;">Deep Correlation</h3>
+        <div style="margin-bottom:14px;">
+            <strong>Canvas Hashes</strong>
+            <div style="margin-top:6px;">
+                {% for hash_value in canvas_hashes %}
+                <a class="badge badge-blue" style="margin-right:6px; display:inline-block; margin-bottom:6px;" href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=hash_value) }}">{{ hash_value }}</a>
+                {% else %}
+                <span style="color:var(--text-muted);">No hashes</span>
+                {% endfor %}
+            </div>
+        </div>
+        <div style="margin-bottom:14px;">
+            <strong>IPs</strong>
+            <div style="margin-top:6px;">
+                {% for ip in ips %}
+                <span class="badge badge-purple" style="margin-right:6px; display:inline-block; margin-bottom:6px;">{{ ip }}</span>
+                {% else %}
+                <span style="color:var(--text-muted);">No IPs</span>
+                {% endfor %}
+            </div>
+        </div>
+        <div>
+            <strong>Slugs Visited</strong>
+            <div style="margin-top:6px;">
+                {% for slug in slugs %}
+                <a class="badge badge-success" style="margin-right:6px; display:inline-block; margin-bottom:6px;" href="{{ url_for('dashboard.dashboard_stats.stats', slug=slug) }}">/{{ slug }}</a>
+                {% else %}
+                <span style="color:var(--text-muted);">No slugs</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:1.5rem;">
+    <h3 style="margin-bottom:12px;">CRM Notes</h3>
+    <form method="POST" action="{{ url_for('dashboard.dashboard_leads.lead_update', lead_id=lead.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label>Label</label>
+            <input type="text" name="label" value="{{ lead.label or '' }}" placeholder="hot, warm, vip...">
+        </div>
+        <div class="form-group">
+            <label>Notes</label>
+            <textarea name="notes" rows="6" style="width:100%;background:var(--bg-input);border:1px solid var(--border-subtle);color:var(--text-primary);padding:12px 14px;border-radius:8px;">{{ lead.notes or '' }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Lead</button>
+    </form>
+</div>
+{% endblock %}

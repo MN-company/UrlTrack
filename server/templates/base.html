@@ -1,149 +1,169 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ULRTrack | Enterprise Intelligence</title>
-
-    <!-- Fonts -->
+    <title>UrlTrack Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700&family=JetBrains+Mono:wght@400&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
-
-    <!-- Global CSRF Protection -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" nonce="{{ csp_nonce|default('') }}"></script>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script nonce="{{ csp_nonce|default('') }}">
-        // Blazing Fast CSRF Injection for all Fetch requests
         const originalFetch = window.fetch;
         window.fetch = async (...args) => {
             let [resource, config] = args;
             config = config || {};
             config.headers = config.headers || {};
-
-            // Add CSRF token if not present
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             if (csrfToken && !config.headers['X-CSRFToken']) {
                 config.headers['X-CSRFToken'] = csrfToken;
                 config.headers['X-Requested-With'] = 'XMLHttpRequest';
             }
-
             return originalFetch(resource, config);
         };
     </script>
-
     {% block head %}{% endblock %}
 </head>
-
 <body>
-
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
     <div class="app-shell">
         {% if not hide_nav %}
-        <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="brand">
-                <i class="fa-solid fa-eye"></i>
-                <span>OVERWATCH</span>
+                <i class="fa-solid fa-link"></i>
+                <span>URLTRACK</span>
             </div>
 
             <nav class="nav-menu">
-                <a href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}"
-                    class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.dashboard_home' %}active{% endif %}">
+                <a href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.dashboard_home' %}active{% endif %}">
                     <i class="fa-solid fa-gauge-high"></i>
                     Command Center
                 </a>
-                <a href="{{ url_for('dashboard.dashboard_leads.contacts') }}"
-                    class="nav-item {% if 'leads' in request.endpoint %}active{% endif %}">
-                    <i class="fa-solid fa-users-viewfinder"></i>
-                    Targets (Leads)
-                </a>
-                <a href="{{ url_for('dashboard.dashboard_links.links') }}"
-                    class="nav-item {% if 'links' in request.endpoint and 'home' not in request.endpoint %}active{% endif %}">
+                <a href="{{ url_for('dashboard.dashboard_links.links') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.links' %}active{% endif %}">
                     <i class="fa-solid fa-link"></i>
-                    Campaigns (Links)
+                    Campaigns
                 </a>
-                <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}"
-                    class="nav-item {% if 'ai' in request.endpoint %}active{% endif %}">
+                <a href="{{ url_for('dashboard.dashboard_leads.leads_list') }}" class="nav-item {% if 'dashboard_leads' in (request.endpoint or '') %}active{% endif %}">
+                    <i class="fa-solid fa-users"></i>
+                    Leads
+                </a>
+                <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}" class="nav-item {% if 'dashboard_ai' in request.endpoint %}active{% endif %}">
                     <i class="fa-solid fa-brain"></i>
                     AI Analyst
                 </a>
-                <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}"
-                    class="nav-item {% if 'stats' in request.endpoint %}active{% endif %}">
+                <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="nav-item {% if 'dashboard_stats' in request.endpoint %}active{% endif %}">
                     <i class="fa-solid fa-chart-line"></i>
                     Global Intel
                 </a>
-
-                <div style="flex: 1"></div>
-
-                <a href="{{ url_for('dashboard.dashboard_links.settings') }}"
-                    class="nav-item {% if 'settings' in request.endpoint and 'security' not in request.endpoint %}active{% endif %}">
-                    <i class="fa-solid fa-cog"></i>
+                <a href="{{ url_for('dashboard.dashboard_stats.graph') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_stats.graph' %}active{% endif %}">
+                    <i class="fa-solid fa-diagram-project"></i>
+                    Graph
+                </a>
+                <div style="flex: 1;"></div>
+                <a href="{{ url_for('dashboard.dashboard_links.settings') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.settings' %}active{% endif %}">
+                    <i class="fa-solid fa-sliders"></i>
                     Settings
                 </a>
-                <a href="{{ url_for('dashboard.dashboard_security.security_settings') }}"
-                    class="nav-item {% if 'security' in request.endpoint %}active{% endif %}">
+                <a href="{{ url_for('dashboard.dashboard_security.security_settings') }}" class="nav-item {% if 'dashboard_security' in request.endpoint or 'dashboard_passkey' in request.endpoint %}active{% endif %}">
                     <i class="fa-solid fa-shield-halved"></i>
                     Security
                 </a>
-                <a href="{{ url_for('auth.logout') }}" class="nav-item" style="color: var(--accent-danger)">
+                <a href="{{ url_for('auth.logout') }}" class="nav-item" style="color: var(--accent-danger);">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i>
                     Logout
                 </a>
             </nav>
         </aside>
+        {% endif %}
+        {% if not hide_nav %}
+        <nav class="mobile-nav">
+          <a href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}"
+             class="mobile-nav-item {% if request.endpoint == 'dashboard.dashboard_links.dashboard_home' %}active{% endif %}">
+            <i class="fa-solid fa-gauge-high"></i><span>Home</span>
+          </a>
+          <a href="{{ url_for('dashboard.dashboard_links.links') }}"
+             class="mobile-nav-item {% if request.endpoint == 'dashboard.dashboard_links.links' %}active{% endif %}">
+            <i class="fa-solid fa-link"></i><span>Links</span>
+          </a>
+          <a href="{{ url_for('dashboard.dashboard_links.create_full') }}"
+             class="mobile-nav-item mobile-nav-fab">
+            <i class="fa-solid fa-plus"></i>
+          </a>
+          <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}"
+             class="mobile-nav-item {% if 'dashboard_ai' in (request.endpoint or '') %}active{% endif %}">
+            <i class="fa-solid fa-brain"></i><span>AI</span>
+          </a>
+          <a href="{{ url_for('dashboard.dashboard_leads.leads_list') }}"
+             class="mobile-nav-item {% if 'dashboard_leads' in (request.endpoint or '') %}active{% endif %}">
+            <i class="fa-solid fa-users"></i><span>Leads</span>
+          </a>
+        </nav>
+        {% endif %}
 
-        <!-- MAIN CONTENT -->
-        <main class="main-content">
-            <!-- TOP BAR -->
+        <main class="main-content" {% if hide_nav %}style="margin-left:0;width:100%;"{% endif %}>
+            {% if not hide_nav %}
             <header class="top-bar">
                 <div class="breadcrumbs">
-                    System / <span>{% block breadcrumb %}Dashboard{% endblock %}</span>
+                    {% block breadcrumb %}Dashboard{% endblock %}
                 </div>
-
+                <button class="hamburger-btn" id="sidebarToggle" aria-label="Menu">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
                 <div class="top-actions">
-                    <form action="{{ url_for('dashboard.dashboard_stats.global_search') }}" method="GET"
-                        style="margin: 0;">
-                        <input type="text" name="q" class="search-bar" placeholder="Intelligence Search (Cmd+K)..."
-                            value="{{ request.args.get('q', '') }}">
+                    <form action="{{ url_for('dashboard.dashboard_stats.global_search') }}" method="GET" style="margin:0;">
+                        <input type="text" name="q" class="search-bar" placeholder="Search IP, email, slug, fingerprint..." value="{{ request.args.get('q', '') }}">
                     </form>
-                    <div
-                        style="width: 32px; height: 32px; background: var(--accent-primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white;">
+                    <div style="width:34px;height:34px;border-radius:50%;background:var(--accent-primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;">
                         {% if current_user.is_authenticated %}
-                        {{ current_user.username[0].upper() }}
+                        {{ (current_user.username or current_user.email)[0].upper() }}
                         {% else %}
                         ?
                         {% endif %}
                     </div>
                 </div>
             </header>
-            {% else %}
-            <!-- Standalone Layout (No Sidebar) -->
-            <main class="main-content" style="margin-left: 0; width: 100%;">
-                {% endif %}
+            {% endif %}
 
-                <!-- SCROLLABLE PAGE AREA -->
-                <div class="page-scroll">
-                    <!-- Flash Messages -->
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                    {% for category, message in messages %}
-                    <div class="badge badge-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warning' }} mb-4"
-                        style="display: block; width: fit-content;">
-                        {{ message }}
-                    </div>
-                    {% endfor %}
-                    {% endif %}
-                    {% endwith %}
-
-                    {% block content %}{% endblock %}
+            <div class="page-scroll">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="badge badge-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warning' }}" style="display:block;width:fit-content;margin-bottom:1rem;">
+                    {{ message }}
                 </div>
-            </main>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </main>
     </div>
-
     {% block scripts %}{% endblock %}
+    <script nonce="{{ csp_nonce|default('') }}">
+    (function(){
+      const btn=document.getElementById('sidebarToggle');
+      const overlay=document.getElementById('sidebarOverlay');
+      const sidebar=document.querySelector('.sidebar');
+      if(!btn||!sidebar||!overlay)return;
+      btn.addEventListener('click',function(){
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('active');
+      });
+      overlay.addEventListener('click',function(){
+        sidebar.classList.remove('open');
+        overlay.classList.remove('active');
+      });
+      sidebar.querySelectorAll('.nav-item').forEach(function(item){
+        item.addEventListener('click',function(){
+          sidebar.classList.remove('open');
+          overlay.classList.remove('active');
+        });
+      });
+    })();
+    </script>
 </body>
-
 </html>
