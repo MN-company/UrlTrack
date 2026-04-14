@@ -1,12 +1,28 @@
 # UrlTrack
 
-UrlTrack is a self-hosted link tracking app built with Flask. You create a link, decide who should get through, and watch what happens after the click: country, device, fingerprint signals, dwell time, email capture, VPN hints, and cross-visit correlations. It is meant for controlled campaigns, demos, internal investigations, and anyone who wants more context than a normal shortener gives.
+UrlTrack is a self-hosted link tracking platform built with Flask. It sits between a public link and its destination, giving you full control over who can access it and deep visibility into what happens after the click.
 
-This repo is the current `v2` line of UrlTrack. It includes the dashboard, public gate pages, background enrichment worker, Telegram alerts, AI analyst, Docker support, and first-run admin setup.
+Unlike traditional link shorteners, UrlTrack focuses on context: it helps you understand who is interacting with your links, how, and why.
+
+It is designed for controlled campaigns, demos, internal investigations, and analytical use cases where standard shorteners and basic trackers fall short.
 
 ## What UrlTrack does
 
 At its core, UrlTrack sits between a public link and its destination.
+
+A key design choice is the built-in anti-bot and anti-crawler system on both the domain and generated links. This makes the platform resistant to URL expanders and similar automated tools: UrlTrack can return a valid HTTP 200 response without ever exposing or resolving the real destination URL, effectively feeding false or empty information to automated systems.
+
+In practice, this means the final destination remains hidden from many automated inspection tools while still allowing the link to behave normally for intended visitors.
+
+## Anti-bot comparison
+
+### UrlTrack behavior (HTTP 200, destination hidden)
+![codice 200](our.png)
+
+### Comparison with standard tools (final URL exposed)
+![rivelano url finale](others.png)
+
+## Main features
 
 You can protect a link with:
 
@@ -18,22 +34,33 @@ You can protect a link with:
 - consent gate
 - schedule windows
 
-After the visitor passes those checks, UrlTrack records the visit and enriches it in the background. From the dashboard you can inspect individual campaigns, trace repeated visitors across links, view device profiles, and keep an eye on leads that emerge from repeated visits.
+After the visitor passes those checks, UrlTrack records the visit and enriches it in the background. From the dashboard you can inspect individual campaigns, trace repeated visitors across links, view device profiles, and monitor leads that emerge from repeated visits.
+
+Depending on configuration, tracking data can include:
+
+- country and geolocation
+- device and browser details
+- fingerprint signals
+- dwell time
+- email capture
+- VPN hints
+- cross-visit correlations
 
 ## Why this project exists
 
-Most trackers either feel too light or too invasive. UrlTrack aims for a middle ground: clear operator controls, useful telemetry, a dashboard that helps you reason about visits, and deployment options simple enough to run on your own infrastructure.
+Many URL shorteners hide useful statistics behind paid plans and often do not offer the level of flexibility or customization that advanced users need.
 
-If you searched for **UrlTrack**, this is the main repository for the Flask-based self-hosted version.
+UrlTrack was created to address that gap: a self-hosted solution with deep tracking, strong customization potential, and room for further expansion.
+
+It aims to provide a level of control and analytical depth comparable to platforms such as IPLogger or Grabify, while remaining fully customizable and under your own infrastructure.
 
 ## Quick start
 
-If you want least-friction local setup:
+If you want the least-friction local setup:
 
 ```bash
 git clone https://github.com/MN-company/UrlTrack.git
 cd UrlTrack
-git checkout v2
 ./install.sh --run
 ```
 
@@ -72,7 +99,7 @@ The container runs Alembic migrations on boot and then starts Gunicorn on port `
 
 ## Manual setup
 
-If you do not want installer flow:
+If you do not want the installer flow:
 
 ```bash
 python3 -m venv venv
@@ -88,7 +115,7 @@ At minimum, `.env` should contain:
 ```env
 SECRET_KEY=replace-me
 SERVER_URL=http://127.0.0.1:8000
-DATABASE_URL=sqlite:///data/ulrtrack.db
+DATABASE_URL=sqlite:///data/urltrack.db
 ```
 
 ## First run
@@ -103,15 +130,15 @@ On a clean database:
 
 That one-time admin secret is only for future admin creation. It is not part of normal login.
 
-## Main areas of dashboard
+## Main areas of the dashboard
 
 ### Home
 
-Campaign summary, recent links, recent visits, fast access to common actions.
+Campaign summary, recent links, recent visits, and fast access to common actions.
 
 ### Campaigns
 
-Per-link analytics page with visit charts, referrers, countries, engagement metrics, and visit log.
+Per-link analytics page with visit charts, referrers, countries, engagement metrics, and a visit log.
 
 ### Graph
 
@@ -189,7 +216,7 @@ This repo includes deploy assets for a few different styles:
 - `deploy/systemd/ulrtrack.service`
 - `deploy/fail2ban/...`
 
-For Fly.io, `fly.toml` is already configured for auto-start and auto-stop machines. For plain Linux, use the systemd and nginx files in `deploy/` as starting point, not as magic one-click infra.
+For Fly.io, `fly.toml` is already configured for auto-start and auto-stop machines. For plain Linux, use the systemd and nginx files in `deploy/` as starting points, not as magic one-click infrastructure.
 
 ## Useful commands
 
@@ -222,7 +249,7 @@ Run local server with repo interpreter:
 
 ### Root returns 404 or wrong app boots
 
-Usually wrong interpreter or stale process. Use repo venv explicitly:
+Usually this means the wrong interpreter is being used or a stale process is still running. Use the repo venv explicitly:
 
 ```bash
 pkill -f "flask --app server:create_app run" || true
@@ -231,7 +258,7 @@ pkill -f "flask --app server:create_app run" || true
 
 ### `flask db` says command not found
 
-Use repo interpreter, not global `flask`:
+Use the repo interpreter, not a global `flask` command:
 
 ```bash
 ./venv/bin/python -m flask --app server:create_app db upgrade
@@ -239,11 +266,11 @@ Use repo interpreter, not global `flask`:
 
 ### Telegram alerts do not arrive
 
-Check bot token, chat id, and whether bot has received at least one message from target chat.
+Check the bot token, chat id, and whether the bot has received at least one message from the target chat.
 
 ### Docker starts but shows warning from `requests`
 
-If app still migrates and Gunicorn comes up, that warning is noisy but not fatal. Check:
+If the app still migrates and Gunicorn comes up, that warning is noisy but not fatal. Check:
 
 ```bash
 docker compose ps
@@ -252,4 +279,6 @@ docker compose logs --tail=200
 
 ## Final note
 
-UrlTrack is opinionated software. It is meant to be run deliberately, with clear ownership and clear intent. If that matches how you work, this repo should feel straightforward once it is up.
+UrlTrack should be considered software for educational purposes.
+
+It is not intended to identify any individual. The creator disclaims any responsibility connected to the proper or improper use of this tool.
