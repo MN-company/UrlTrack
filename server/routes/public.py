@@ -29,6 +29,42 @@ from ..validators import get_client_ip, normalize_destination_url
 
 bp = Blueprint("public", __name__)
 
+_VPN_KEYWORDS = (
+    "vpn",
+    "mullvad",
+    "nordvpn",
+    "expressvpn",
+    "surfshark",
+    "protonvpn",
+    "cyberghost",
+    "ipvanish",
+    "windscribe",
+    "tunnelbear",
+    "hide.me",
+    "purevpn",
+    "torguard",
+    "ivpn",
+    "private internet access",
+    "pia vpn",
+)
+_CLOUD_KEYWORDS = (
+    "amazon",
+    "google",
+    "microsoft",
+    "digitalocean",
+    "cloudflare",
+    "linode",
+    "vultr",
+    "hetzner",
+    "ovh",
+    "leaseweb",
+    "m247",
+    "datacamp",
+    "choopa",
+    "tzulo",
+    "packethub",
+)
+
 
 @bp.route("/", methods=["GET"])
 def index():
@@ -76,6 +112,17 @@ def _public_response(template_name: str, status: int = 200, **kwargs):
         response = make_response(render_template(template_name, **kwargs))
     response.status_code = status
     return response
+
+
+def _detect_vpn_or_cloud(geo: dict) -> bool:
+    if geo.get("proxy") or geo.get("hosting"):
+        return True
+    combined = f"{geo.get('org') or ''} {geo.get('isp') or ''}".lower()
+    if any(keyword in combined for keyword in _VPN_KEYWORDS):
+        return True
+    if any(keyword in combined for keyword in _CLOUD_KEYWORDS):
+        return True
+    return False
 
 
 def _cached_link(slug: str):
@@ -184,13 +231,8 @@ def redirect_to_url(slug):
         db.session.rollback()
         visit.id = None
 
-    if visit.id:
-        try:
-            log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "ip": raw_ip})
-        except Exception:
-            pass
-
     visit_token = sign_visit_token(visit.id) if visit.id else None
+    _enrich_after_response = False
 
     schedule_error = _validate_schedule(link_data)
     if schedule_error:
@@ -202,17 +244,29 @@ def redirect_to_url(slug):
         if code.strip()
     ]
     visitor_country = (geo.get("countryCode") or "").upper()
-    if allowed_countries and visitor_country and visitor_country not in allowed_countries:
-        if visit.id:
-            visit.is_suspicious = True
-            visit.notes = f"Blocked country: {visitor_country}"
-            db.session.commit()
-        return _public_response(
-            "error.html",
-            status=403,
-            message="Access denied from your location.",
-            hide_nav=True,
-        )
+    if allowed_countries:
+        if not visitor_country:
+            if visit.id:
+                visit.is_suspicious = True
+                visit.notes = "Blocked: geo lookup failed"
+                db.session.commit()
+            return _public_response(
+                "error.html",
+                status=403,
+                message="Unable to verify your location.",
+                hide_nav=True,
+            )
+        if visitor_country not in allowed_countries:
+            if visit.id:
+                visit.is_suspicious = True
+                visit.notes = f"Blocked country: {visitor_country}"
+                db.session.commit()
+            return _public_response(
+                "error.html",
+                status=403,
+                message="Access denied from your location.",
+                hide_nav=True,
+            )
 
     try:
         final_destination = _pick_destination(link_data, user_agent)
@@ -234,11 +288,8 @@ def redirect_to_url(slug):
     if max_clicks and Visit.query.filter_by(link_id=link_data["id"]).count() > max_clicks:
         return _public_response("error.html", status=404, message="Link limit reached.", hide_nav=True)
 
-    org_lower = (geo.get("org") or "").lower()
-    is_vpn_or_cloud = bool(geo.get("hosting") or geo.get("proxy"))
-    if any(token in org_lower for token in ("amazon", "google", "microsoft", "digitalocean", "vpn", "proxy", "cloudflare")):
-        is_vpn_or_cloud = True
-    is_bot = is_bot_ua(ua_string) or is_vpn_or_cloud
+    is_vpn_or_cloud = _detect_vpn_or_cloud(geo)
+    is_bot = is_bot_ua(ua_string)
     safe_destination = _safe_url_or_none(link_data.get("safe_url"))
 
     if is_malicious_ip(raw_ip):
@@ -311,6 +362,7 @@ def redirect_to_url(slug):
                 hide_nav=True,
             )
 
+    _enrich_after_response = True
     response = _public_response(
         "loading.html",
         destination=final_destination,
@@ -322,6 +374,11 @@ def redirect_to_url(slug):
     )
     response.headers["ETag"] = client_etag
     response.headers["Cache-Control"] = "private, max-age=31536000"
+    if _enrich_after_response and visit.id:
+        try:
+            log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "ip": raw_ip})
+        except Exception:
+            pass
     return response
 
 
@@ -339,11 +396,15 @@ def verify_captcha():
 
     client_ip = get_client_ip(request, Config.TRUST_PROXY_HEADERS)
     if verify_turnstile(turnstile_token, client_ip):
-        if canvas_hash:
-            visit = db.session.get(Visit, int(visit_id)) if visit_id else None
-            if visit and not visit.canvas_hash:
+        visit = db.session.get(Visit, int(visit_id)) if visit_id else None
+        if visit is not None:
+            if canvas_hash and not visit.canvas_hash:
                 visit.canvas_hash = canvas_hash
-                db.session.commit()
+            db.session.commit()
+            try:
+                log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "ip": request.remote_addr})
+            except Exception:
+                pass
         auth_hash = hashlib.sha256(f"captcha_ok_{slug}{Config.SECRET_KEY}".encode()).hexdigest()
         response = make_response(redirect(f"/{slug}"))
         response.set_cookie(
@@ -378,6 +439,13 @@ def verify_password():
     link = Link.query.filter_by(slug=slug).first_or_404()
     user_hash = hashlib.sha256(password.encode()).hexdigest()
     if user_hash == link.password_hash:
+        visit = db.session.get(Visit, int(visit_id)) if visit_id else None
+        if visit is not None:
+            db.session.commit()
+            try:
+                log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "ip": request.remote_addr})
+            except Exception:
+                pass
         auth_hash = hashlib.sha256(f"{link.password_hash}{Config.SECRET_KEY}".encode()).hexdigest()
         response = make_response(redirect(f"/{slug}"))
         response.set_cookie(
@@ -429,6 +497,23 @@ def verify_email():
     if visit is not None:
         visit.email = email
         db.session.commit()
+        if visit.canvas_hash:
+            Visit.query.filter(
+                Visit.canvas_hash == visit.canvas_hash,
+                Visit.email.is_(None),
+                Visit.id != visit.id,
+            ).update({"email": email}, synchronize_session=False)
+            db.session.commit()
+        try:
+            log_queue.put(
+                {
+                    "type": "enrich_visit",
+                    "visit_id": visit.id,
+                    "ip": get_client_ip(request, Config.TRUST_PROXY_HEADERS),
+                }
+            )
+        except Exception:
+            pass
 
     response = make_response(redirect(f"/{slug}"))
     response.set_cookie(

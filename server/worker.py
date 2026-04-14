@@ -28,15 +28,6 @@ def _telegram_escape(value: str) -> str:
     return value
 
 
-def _telegram_plain_text(value: str) -> str:
-    if not value:
-        return ""
-    value = value.replace("*", "").replace("`", "")
-    for char in ("_", "[", "]", "(", ")", "~", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"):
-        value = value.replace(f"\\{char}", char)
-    return value.replace("\\", "")
-
-
 def _build_visit_payload(visit: Visit) -> dict:
     return {
         "id": visit.id,
@@ -109,11 +100,20 @@ def _fire_telegram(bot_token: str, chat_id: str, visit_payload: dict) -> None:
 
 def _send_telegram_text(bot_token: str, chat_id: str, text: str) -> None:
     try:
-        requests.post(
+        resp = requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": _telegram_plain_text(text)},
+            json={"chat_id": chat_id, "text": text, "parse_mode": "MarkdownV2"},
             timeout=5,
         )
+        if not resp.ok:
+            plain = text
+            for ch in ("*", "`", "\\"):
+                plain = plain.replace(ch, "")
+            requests.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": plain},
+                timeout=5,
+            )
     except Exception as exc:
         print(f"Telegram message error: {exc}")
 
@@ -254,7 +254,11 @@ def _daily_digest_loop(app) -> None:
             print(f"Daily digest loop error: {exc}")
             time.sleep(3600)
         finally:
-            db.session.remove()
+            try:
+                with app.app_context():
+                    db.session.remove()
+            except Exception:
+                pass
 
 
 def _followup_loop(app) -> None:
@@ -331,10 +335,10 @@ def _handle_task(app, task):
                         visit.hostname = hostname
 
                     geo_data = get_geo_data(raw_ip)
-                    visit.is_vpn = bool(geo_data.get("proxy"))
-                    visit.is_proxy = bool(geo_data.get("proxy"))
-                    visit.is_hosting = bool(geo_data.get("hosting"))
-                    visit.is_mobile = bool(geo_data.get("mobile"))
+                    visit.is_vpn = visit.is_vpn or bool(geo_data.get("proxy"))
+                    visit.is_proxy = visit.is_proxy or bool(geo_data.get("proxy"))
+                    visit.is_hosting = visit.is_hosting or bool(geo_data.get("hosting"))
+                    visit.is_mobile = visit.is_mobile or bool(geo_data.get("mobile"))
                     visit.isp = visit.isp or geo_data.get("isp")
                     visit.org = visit.org or geo_data.get("org")
                     visit.country = visit.country or geo_data.get("country")
@@ -378,7 +382,11 @@ def _handle_task(app, task):
         print(f"Worker task error: {exc}")
         db.session.rollback()
     finally:
-        db.session.remove()
+        try:
+            with app.app_context():
+                db.session.remove()
+        except Exception:
+            pass
 
 
 def _worker_loop(app):
