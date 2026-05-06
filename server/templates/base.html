@@ -54,13 +54,17 @@
                     <i class="fa-solid fa-brain"></i>
                     AI Analyst
                 </a>
-                <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="nav-item {% if 'dashboard_stats' in request.endpoint %}active{% endif %}">
+                <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="nav-item {% if request.endpoint in ['dashboard.dashboard_stats.global_timeline', 'dashboard.dashboard_stats.global_search', 'dashboard.dashboard_stats.stats', 'dashboard.dashboard_stats.device_profile'] %}active{% endif %}">
                     <i class="fa-solid fa-chart-line"></i>
                     Global Intel
                 </a>
                 <a href="{{ url_for('dashboard.dashboard_stats.graph') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_stats.graph' %}active{% endif %}">
                     <i class="fa-solid fa-diagram-project"></i>
                     Graph
+                </a>
+                <a href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_stats.cross_tracking' %}active{% endif %}">
+                    <i class="fa-solid fa-fingerprint"></i>
+                    Cross Tracking
                 </a>
                 <div style="flex: 1;"></div>
                 <a href="{{ url_for('dashboard.dashboard_links.settings') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.settings' %}active{% endif %}">

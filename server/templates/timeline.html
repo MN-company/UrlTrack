@@ -4,10 +4,19 @@
 
 {% block content %}
 <div class="card" style="margin-bottom:1.25rem;">
-    <form method="GET" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:0.75rem;align-items:end;">
+    <form method="GET" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;align-items:end;">
         <div>
             <label>Search</label>
             <input type="text" name="q" value="{{ q }}" placeholder="IP, email, hostname, org, fingerprint">
+        </div>
+        <div>
+            <label>Link</label>
+            <select name="slug">
+                <option value="">All</option>
+                {% for item in slugs %}
+                <option value="{{ item }}" {% if item == filters.slug %}selected{% endif %}>/{{ item }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div>
             <label>Country</label>
@@ -28,6 +37,45 @@
             </select>
         </div>
         <div>
+            <label>Signal</label>
+            <select name="signal">
+                <option value="all" {% if filters.signal == 'all' %}selected{% endif %}>All signals</option>
+                <option value="fingerprint" {% if filters.signal == 'fingerprint' %}selected{% endif %}>Has fingerprint</option>
+                <option value="email" {% if filters.signal == 'email' %}selected{% endif %}>Has email</option>
+                <option value="vpn" {% if filters.signal == 'vpn' %}selected{% endif %}>VPN / proxy / hosting</option>
+                <option value="bot" {% if filters.signal == 'bot' %}selected{% endif %}>Browser automation</option>
+                <option value="adblock" {% if filters.signal == 'adblock' %}selected{% endif %}>Adblock / privacy</option>
+                <option value="conflict" {% if filters.signal == 'conflict' %}selected{% endif %}>Cluster conflict</option>
+                <option value="missing_beacon" {% if filters.signal == 'missing_beacon' %}selected{% endif %}>Missing beacon</option>
+            </select>
+        </div>
+        <div>
+            <label>Beacon</label>
+            <select name="beacon">
+                <option value="all" {% if filters.beacon == 'all' %}selected{% endif %}>All</option>
+                <option value="received" {% if filters.beacon == 'received' %}selected{% endif %}>Received</option>
+                <option value="missing" {% if filters.beacon == 'missing' %}selected{% endif %}>Missing</option>
+            </select>
+        </div>
+        <div>
+            <label>Review</label>
+            <select name="review_label">
+                <option value="">All</option>
+                <option value="__none" {% if filters.review_label == '__none' %}selected{% endif %}>Unreviewed</option>
+                {% for item in review_labels %}
+                <option value="{{ item }}" {% if item == filters.review_label %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Min Risk</label>
+            <input type="number" min="0" max="100" name="risk_min" value="{{ filters.risk_min }}">
+        </div>
+        <div>
+            <label>Min ID</label>
+            <input type="number" min="0" max="100" name="identity_min" value="{{ filters.identity_min }}">
+        </div>
+        <div>
             <label>Days</label>
             <select name="days">
                 <option value="1" {% if days == 1 %}selected{% endif %}>1</option>
@@ -36,14 +84,30 @@
                 <option value="0" {% if days == 0 %}selected{% endif %}>All</option>
             </select>
         </div>
+        <div>
+            <label>Sort</label>
+            <select name="sort">
+                <option value="newest" {% if filters.sort == 'newest' %}selected{% endif %}>Newest</option>
+                <option value="risk" {% if filters.sort == 'risk' %}selected{% endif %}>Highest risk</option>
+                <option value="identity" {% if filters.sort == 'identity' %}selected{% endif %}>Highest identity</option>
+            </select>
+        </div>
         <button class="btn btn-primary">Filter</button>
     </form>
 </div>
 
 <div class="card">
     <div class="card-header">
-        <span class="card-title">Visits</span>
-        <div class="badge badge-blue">{{ visits|length }}</div>
+        <div>
+            <span class="card-title">Visits</span>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">
+                Investigative filters for tracking quality, risk, review status, and cross-signal traces.
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+            <a href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}" class="btn btn-ghost">Cross Tracking</a>
+            <div class="badge badge-blue">{{ visits|length }}</div>
+        </div>
     </div>
     <table class="data-table">
         <thead>

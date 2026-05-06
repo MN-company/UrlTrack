@@ -12,9 +12,10 @@
         <div>
             <span class="card-title"><i class="fa-solid fa-diagram-project"></i> Visitor Connection Graph</span>
             <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">
-                canvas_hash to slug and email correlations across all tracked visits.
+                Cross-signal links between campaigns, emails, IPs, canvas hashes, ETags, and composite fingerprints.
             </div>
         </div>
+        <a href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}" class="btn btn-ghost">Cross Tracking</a>
     </div>
     <div id="graph-root" style="width:100%;height:72vh;min-height:560px;border-radius:20px;overflow:hidden;background:rgba(15,23,42,0.5);"></div>
 </div>
@@ -32,6 +33,9 @@ const GRAPH_DATA = {{ graph_data|safe }};
     const height = root.clientHeight || 720;
     const colorMap = {
         hash: "#3b82f6",
+        composite: "#14b8a6",
+        etag: "#a855f7",
+        ip: "#64748b",
         slug: "#22c55e",
         email: "#f97316"
     };

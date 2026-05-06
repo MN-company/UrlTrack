@@ -15,6 +15,110 @@ from ...utils import safe_json, sanitize
 bp = Blueprint("dashboard_stats", __name__)
 
 
+def _safe_int(value, default: int, min_value: int = 0, max_value: int = 10_000) -> int:
+    try:
+        parsed = int(sanitize(value, 8) or default)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(min_value, min(parsed, max_value))
+
+
+def _visit_search_filter(search_term: str):
+    return db.or_(
+        Visit.ip_address.ilike(search_term),
+        Visit.email.ilike(search_term),
+        Visit.hostname.ilike(search_term),
+        Visit.org.ilike(search_term),
+        Visit.city.ilike(search_term),
+        Visit.country.ilike(search_term),
+        Visit.canvas_hash.ilike(search_term),
+        Visit.audio_fp.ilike(search_term),
+        Visit.webgl_renderer.ilike(search_term),
+        Visit.webgl_vendor.ilike(search_term),
+        Visit.fingerprint_composite_v1.ilike(search_term),
+        Visit.etag.ilike(search_term),
+        Visit.review_label.ilike(search_term),
+        Visit.match_reasons_json.ilike(search_term),
+    )
+
+
+def _apply_visit_filters(visit_query, filters: dict):
+    days = filters.get("days", 7)
+    if days > 0:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        visit_query = visit_query.filter(Visit.timestamp >= cutoff)
+
+    if filters.get("q"):
+        visit_query = visit_query.filter(_visit_search_filter(f"%{filters['q']}%"))
+    if filters.get("country"):
+        visit_query = visit_query.filter(Visit.country == filters["country"])
+    if filters.get("device"):
+        visit_query = visit_query.filter(Visit.device_type == filters["device"])
+    if filters.get("slug"):
+        visit_query = visit_query.filter(Visit.link.has(Link.slug == filters["slug"]))
+
+    risk_min = filters.get("risk_min", 0)
+    if risk_min > 0:
+        visit_query = visit_query.filter(Visit.risk_score.isnot(None), Visit.risk_score >= risk_min)
+
+    identity_min = filters.get("identity_min", 0)
+    if identity_min > 0:
+        visit_query = visit_query.filter(
+            Visit.identity_confidence.isnot(None),
+            Visit.identity_confidence >= identity_min,
+        )
+
+    beacon = filters.get("beacon", "all")
+    if beacon == "received":
+        visit_query = visit_query.filter(Visit.beacon_received_at.isnot(None))
+    elif beacon == "missing":
+        visit_query = visit_query.filter(Visit.beacon_received_at.is_(None))
+
+    review_label = filters.get("review_label", "")
+    if review_label == "__none":
+        visit_query = visit_query.filter(Visit.review_label.is_(None))
+    elif review_label:
+        visit_query = visit_query.filter(Visit.review_label == review_label)
+
+    signal = filters.get("signal", "all")
+    if signal == "vpn":
+        visit_query = visit_query.filter(
+            db.or_(Visit.is_vpn.is_(True), Visit.is_proxy.is_(True), Visit.is_hosting.is_(True))
+        )
+    elif signal == "bot":
+        visit_query = visit_query.filter(Visit.browser_bot.is_(True))
+    elif signal == "adblock":
+        visit_query = visit_query.filter(
+            db.or_(Visit.adblock.is_(True), Visit.extensions_detected.ilike("%adblock%"))
+        )
+    elif signal == "conflict":
+        visit_query = visit_query.filter(
+            db.or_(Visit.cluster_conflict.is_(True), Visit.conflict_reason.isnot(None))
+        )
+    elif signal == "email":
+        visit_query = visit_query.filter(Visit.email.isnot(None), Visit.email != "")
+    elif signal == "fingerprint":
+        visit_query = visit_query.filter(
+            db.or_(
+                Visit.fingerprint_composite_v1.isnot(None),
+                Visit.canvas_hash.isnot(None),
+                Visit.etag.isnot(None),
+            )
+        )
+    elif signal == "missing_beacon":
+        visit_query = visit_query.filter(Visit.beacon_received_at.is_(None))
+
+    return visit_query
+
+
+def _visit_sort(visit_query, sort: str):
+    if sort == "risk":
+        return visit_query.order_by(Visit.risk_score.desc().nullslast(), Visit.timestamp.desc())
+    if sort == "identity":
+        return visit_query.order_by(Visit.identity_confidence.desc().nullslast(), Visit.timestamp.desc())
+    return visit_query.order_by(Visit.timestamp.desc())
+
+
 @bp.route("/search")
 @login_required
 def global_search():
@@ -25,19 +129,7 @@ def global_search():
 
     search_term = f"%{query}%"
     visits = (
-        Visit.query.filter(
-            db.or_(
-                Visit.ip_address.ilike(search_term),
-                Visit.email.ilike(search_term),
-                Visit.hostname.ilike(search_term),
-                Visit.org.ilike(search_term),
-                Visit.city.ilike(search_term),
-                Visit.country.ilike(search_term),
-                Visit.canvas_hash.ilike(search_term),
-                Visit.webgl_renderer.ilike(search_term),
-                Visit.etag.ilike(search_term),
-            )
-        )
+        Visit.query.filter(_visit_search_filter(search_term))
         .order_by(Visit.timestamp.desc())
         .limit(100)
         .all()
@@ -59,51 +151,55 @@ def global_search():
 @bp.route("/timeline")
 @login_required
 def global_timeline():
-    query = sanitize(request.args.get("q"), 255)
-    country = sanitize(request.args.get("country"), 64)
-    device = sanitize(request.args.get("device"), 64)
-    try:
-        days = int(sanitize(request.args.get("days"), 3) or 7)
-    except ValueError:
-        days = 7
-    if days < 0:
-        days = 7
+    filters = {
+        "q": sanitize(request.args.get("q"), 255),
+        "country": sanitize(request.args.get("country"), 64),
+        "device": sanitize(request.args.get("device"), 64),
+        "slug": sanitize(request.args.get("slug"), 80),
+        "days": _safe_int(request.args.get("days"), 7, min_value=0, max_value=3650),
+        "risk_min": _safe_int(request.args.get("risk_min"), 0, min_value=0, max_value=100),
+        "identity_min": _safe_int(request.args.get("identity_min"), 0, min_value=0, max_value=100),
+        "beacon": sanitize(request.args.get("beacon"), 16) or "all",
+        "review_label": sanitize(request.args.get("review_label"), 32),
+        "signal": sanitize(request.args.get("signal"), 32) or "all",
+        "sort": sanitize(request.args.get("sort"), 16) or "newest",
+    }
+    if filters["beacon"] not in {"all", "received", "missing"}:
+        filters["beacon"] = "all"
+    if filters["signal"] not in {
+        "all",
+        "vpn",
+        "bot",
+        "adblock",
+        "conflict",
+        "email",
+        "fingerprint",
+        "missing_beacon",
+    }:
+        filters["signal"] = "all"
+    if filters["sort"] not in {"newest", "risk", "identity"}:
+        filters["sort"] = "newest"
 
-    visit_query = Visit.query
-    if days > 0:
-        cutoff = datetime.utcnow() - timedelta(days=days)
-        visit_query = visit_query.filter(Visit.timestamp >= cutoff)
-    if query:
-        search_term = f"%{query}%"
-        visit_query = visit_query.filter(
-            db.or_(
-                Visit.ip_address.ilike(search_term),
-                Visit.email.ilike(search_term),
-                Visit.hostname.ilike(search_term),
-                Visit.org.ilike(search_term),
-                Visit.city.ilike(search_term),
-                Visit.country.ilike(search_term),
-                Visit.canvas_hash.ilike(search_term),
-                Visit.etag.ilike(search_term),
-            )
-        )
-    if country:
-        visit_query = visit_query.filter(Visit.country == country)
-    if device:
-        visit_query = visit_query.filter(Visit.device_type == device)
-
-    visits = visit_query.order_by(Visit.timestamp.desc()).limit(200).all()
+    visit_query = _apply_visit_filters(Visit.query.options(joinedload(Visit.link)), filters)
+    visits = _visit_sort(visit_query, filters["sort"]).limit(200).all()
     countries = [value for (value,) in db.session.query(Visit.country).distinct().all() if value]
     devices = [value for (value,) in db.session.query(Visit.device_type).distinct().all() if value]
+    slugs = [value for (value,) in db.session.query(Link.slug).order_by(Link.slug.asc()).all() if value]
+    review_labels = [
+        value for (value,) in db.session.query(Visit.review_label).distinct().all() if value
+    ]
     return render_template(
         "timeline.html",
         visits=visits,
-        q=query,
-        country=country,
-        device=device,
-        days=days,
+        filters=filters,
+        q=filters["q"],
+        country=filters["country"],
+        device=filters["device"],
+        days=filters["days"],
         countries=countries,
         devices=devices,
+        slugs=slugs,
+        review_labels=sorted(review_labels),
     )
 
 
@@ -185,6 +281,8 @@ def device_profile(fingerprint: str):
             db.or_(
                 Visit.canvas_hash == fingerprint,
                 Visit.etag == fingerprint,
+                Visit.fingerprint_composite_v1 == fingerprint,
+                Visit.audio_fp == fingerprint,
             )
         )
         .order_by(Visit.timestamp.desc())
@@ -243,12 +341,135 @@ def device_profile(fingerprint: str):
     )
 
 
+@bp.route("/cross")
+@login_required
+def cross_tracking():
+    group_by = sanitize(request.args.get("group_by"), 32) or "email"
+    groups = {
+        "email": {
+            "label": "Email",
+            "column": Visit.email,
+            "node_prefix": "email",
+        },
+        "canvas": {
+            "label": "Canvas hash",
+            "column": Visit.canvas_hash,
+            "node_prefix": "hash",
+        },
+        "composite": {
+            "label": "Composite fingerprint",
+            "column": Visit.fingerprint_composite_v1,
+            "node_prefix": "composite",
+        },
+        "ip": {
+            "label": "IP address",
+            "column": Visit.ip_address,
+            "node_prefix": "ip",
+        },
+        "etag": {
+            "label": "ETag",
+            "column": Visit.etag,
+            "node_prefix": "etag",
+        },
+    }
+    if group_by not in groups:
+        group_by = "email"
+
+    days = _safe_int(request.args.get("days"), 30, min_value=0, max_value=3650)
+    min_links = _safe_int(request.args.get("min_links"), 2, min_value=1, max_value=100)
+    risk_min = _safe_int(request.args.get("risk_min"), 0, min_value=0, max_value=100)
+    identity_min = _safe_int(request.args.get("identity_min"), 0, min_value=0, max_value=100)
+    query = sanitize(request.args.get("q"), 255)
+    column = groups[group_by]["column"]
+
+    base_filters = [column.isnot(None), column != ""]
+    if days > 0:
+        base_filters.append(Visit.timestamp >= datetime.utcnow() - timedelta(days=days))
+    if risk_min > 0:
+        base_filters.extend([Visit.risk_score.isnot(None), Visit.risk_score >= risk_min])
+    if identity_min > 0:
+        base_filters.extend([Visit.identity_confidence.isnot(None), Visit.identity_confidence >= identity_min])
+    if query:
+        base_filters.append(column.ilike(f"%{query}%"))
+
+    rows = (
+        db.session.query(
+            column.label("identifier"),
+            func.count(Visit.id).label("visit_count"),
+            func.count(func.distinct(Visit.link_id)).label("link_count"),
+            func.avg(Visit.identity_confidence).label("avg_identity"),
+            func.avg(Visit.risk_score).label("avg_risk"),
+            func.max(Visit.timestamp).label("last_seen"),
+        )
+        .filter(*base_filters)
+        .group_by(column)
+        .having(func.count(func.distinct(Visit.link_id)) >= min_links)
+        .order_by(func.count(func.distinct(Visit.link_id)).desc(), func.count(Visit.id).desc())
+        .limit(100)
+        .all()
+    )
+
+    identities = []
+    for row in rows:
+        related_visits = (
+            Visit.query.options(joinedload(Visit.link))
+            .filter(*base_filters, column == row.identifier)
+            .order_by(Visit.timestamp.desc())
+            .limit(12)
+            .all()
+        )
+        slugs = sorted({visit.link.slug for visit in related_visits if visit.link})
+        emails = sorted({visit.email for visit in related_visits if visit.email})
+        countries = sorted({visit.country for visit in related_visits if visit.country})
+        identities.append(
+            {
+                "identifier": row.identifier,
+                "short_identifier": row.identifier[:18] + "..." if len(row.identifier) > 22 else row.identifier,
+                "visit_count": row.visit_count,
+                "link_count": row.link_count,
+                "avg_identity": int(row.avg_identity or 0),
+                "avg_risk": int(row.avg_risk or 0),
+                "last_seen": row.last_seen,
+                "slugs": slugs,
+                "emails": emails,
+                "countries": countries,
+                "visits": related_visits,
+                "profile_url": url_for(
+                    "dashboard.dashboard_stats.device_profile",
+                    fingerprint=row.identifier,
+                )
+                if group_by in {"canvas", "composite", "etag"}
+                else url_for("dashboard.dashboard_stats.global_timeline", q=row.identifier),
+            }
+        )
+
+    return render_template(
+        "cross_tracking.html",
+        identities=identities,
+        group_by=group_by,
+        groups=groups,
+        days=days,
+        min_links=min_links,
+        risk_min=risk_min,
+        identity_min=identity_min,
+        q=query,
+    )
+
+
 @bp.route("/graph")
 @login_required
 def graph():
     visits = (
         Visit.query.options(joinedload(Visit.link))
-        .filter(db.or_(Visit.canvas_hash.isnot(None), Visit.email.isnot(None)))
+        .filter(
+            db.or_(
+                Visit.canvas_hash.isnot(None),
+                Visit.fingerprint_composite_v1.isnot(None),
+                Visit.etag.isnot(None),
+                Visit.email.isnot(None),
+                Visit.ip_address.isnot(None),
+            )
+        )
         .order_by(Visit.timestamp.desc())
         .all()
     )
@@ -269,28 +490,31 @@ def graph():
             "url": url_for("dashboard.dashboard_stats.stats", slug=slug_value),
         }
 
-        if visit.canvas_hash:
-            hash_value = visit.canvas_hash
-            hash_id = f"hash:{hash_value}"
-            nodes[hash_id] = {
-                "id": hash_id,
-                "type": "hash",
-                "label": hash_value[:8],
-                "url": url_for("dashboard.dashboard_stats.device_profile", fingerprint=hash_value),
+        signal_nodes = []
+        signal_values = [
+            ("hash", visit.canvas_hash, visit.canvas_hash),
+            ("composite", visit.fingerprint_composite_v1, visit.fingerprint_composite_v1),
+            ("etag", visit.etag, visit.etag),
+            ("ip", visit.ip_address, None),
+        ]
+        for signal_type, signal_value, profile_fingerprint in signal_values:
+            if not signal_value:
+                continue
+            signal_id = f"{signal_type}:{signal_value}"
+            nodes[signal_id] = {
+                "id": signal_id,
+                "type": signal_type,
+                "label": signal_value[:10] if signal_type != "ip" else signal_value,
+                "url": (
+                    url_for("dashboard.dashboard_stats.device_profile", fingerprint=profile_fingerprint)
+                    if profile_fingerprint
+                    else url_for("dashboard.dashboard_stats.global_timeline", q=signal_value)
+                ),
             }
-            edge_weights[(hash_id, slug_id)] += 1
+            edge_weights[(signal_id, slug_id)] += 1
+            signal_nodes.append(signal_id)
 
-            if visit.email:
-                email_value = visit.email
-                email_id = f"email:{email_value}"
-                nodes[email_id] = {
-                    "id": email_id,
-                    "type": "email",
-                    "label": email_value,
-                    "url": url_for("dashboard.dashboard_stats.global_search", q=email_value),
-                }
-                edge_weights[(hash_id, email_id)] += 1
-        elif visit.email:
+        if visit.email:
             email_value = visit.email
             email_id = f"email:{email_value}"
             nodes[email_id] = {
@@ -299,6 +523,9 @@ def graph():
                 "label": email_value,
                 "url": url_for("dashboard.dashboard_stats.global_search", q=email_value),
             }
+            edge_weights[(email_id, slug_id)] += 1
+            for signal_id in signal_nodes:
+                edge_weights[(signal_id, email_id)] += 1
 
     degrees = defaultdict(int)
     for (source, target), weight in edge_weights.items():

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}Global Intel / Cross Tracking{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:1.25rem;">
+    <form method="GET" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;align-items:end;">
+        <div>
+            <label>Signal</label>
+            <select name="group_by">
+                {% for key, item in groups.items() %}
+                <option value="{{ key }}" {% if key == group_by %}selected{% endif %}>{{ item.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Search Identifier</label>
+            <input type="text" name="q" value="{{ q }}" placeholder="email, IP, hash">
+        </div>
+        <div>
+            <label>Days</label>
+            <select name="days">
+                <option value="7" {% if days == 7 %}selected{% endif %}>7</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>30</option>
+                <option value="90" {% if days == 90 %}selected{% endif %}>90</option>
+                <option value="0" {% if days == 0 %}selected{% endif %}>All</option>
+            </select>
+        </div>
+        <div>
+            <label>Min Links</label>
+            <input type="number" min="1" max="100" name="min_links" value="{{ min_links }}">
+        </div>
+        <div>
+            <label>Min Risk</label>
+            <input type="number" min="0" max="100" name="risk_min" value="{{ risk_min }}">
+        </div>
+        <div>
+            <label>Min ID</label>
+            <input type="number" min="0" max="100" name="identity_min" value="{{ identity_min }}">
+        </div>
+        <button class="btn btn-primary">Find Matches</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <span class="card-title"><i class="fa-solid fa-fingerprint"></i> Cross-Tracking Matches</span>
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">
+                Finds the same signal appearing across multiple tracked links. Use this to spot recurring visitors, shared devices, reused emails, and suspicious infrastructure.
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+            <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="btn btn-ghost">Timeline</a>
+            <a href="{{ url_for('dashboard.dashboard_stats.graph') }}" class="btn btn-ghost">Graph</a>
+            <div class="badge badge-blue">{{ identities|length }}</div>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Identifier</th>
+                <th>Coverage</th>
+                <th>Trust</th>
+                <th>Links</th>
+                <th>Recent Evidence</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for identity in identities %}
+            <tr>
+                <td>
+                    <div class="text-mono">{{ identity.short_identifier }}</div>
+                    {% if identity.emails %}
+                    <div style="font-size:0.8rem;color:var(--text-secondary);">{{ identity.emails|join(', ') }}</div>
+                    {% endif %}
+                    {% if identity.countries %}
+                    <div style="font-size:0.8rem;color:var(--text-secondary);">{{ identity.countries|join(', ') }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    <div><strong>{{ identity.visit_count }}</strong> visits</div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);">{{ identity.link_count }} linked campaigns</div>
+                </td>
+                <td>
+                    <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+                        <span class="badge badge-blue">ID {{ identity.avg_identity }}</span>
+                        {% if identity.avg_risk >= 50 %}
+                        <span class="badge badge-danger">Risk {{ identity.avg_risk }}</span>
+                        {% elif identity.avg_risk > 0 %}
+                        <span class="badge badge-warning">Risk {{ identity.avg_risk }}</span>
+                        {% else %}
+                        <span class="badge badge-success">Risk 0</span>
+                        {% endif %}
+                    </div>
+                </td>
+                <td>
+                    {% for slug in identity.slugs[:6] %}
+                    <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=slug) }}" class="badge badge-purple">/{{ slug }}</a>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for visit in identity.visits[:4] %}
+                    <div style="margin-bottom:0.35rem;">
+                        <span class="text-mono">{{ visit.timestamp.strftime('%m-%d %H:%M') }}</span>
+                        <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) }}">/{{ visit.link.slug }}</a>
+                        <span style="color:var(--text-secondary);">{{ visit.email or visit.ip_address or 'anonymous' }}</span>
+                    </div>
+                    {% endfor %}
+                </td>
+                <td>
+                    <a href="{{ identity.profile_url }}" class="btn btn-ghost">Inspect</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6">No cross-tracking matches found for the selected filters.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
