@@ -18,13 +18,20 @@
                 <div style="font-weight:600;margin-bottom:0.5rem;">AI Analyst</div>
                 <div>
                     Ask about IPs, fingerprints, links, or patterns in recent visits. Context shortcuts:
-                    <code>@visit:123</code>, <code>@hash:abcd1234</code>, <code>@link:promo</code>, <code>@ip:1.2.3.4</code>.
+                    <code>@visit:123</code>, <code>@lead:42</code>, <code>@hash:abcd1234</code>, <code>@link:promo</code>, <code>@ip:1.2.3.4</code>.
                 </div>
             </div>
         </div>
 
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+            <button class="btn btn-ghost btn-sm prompt-chip" data-prompt="Which high-risk visits need review today? Prioritize by impact.">Review risk queue</button>
+            <button class="btn btn-ghost btn-sm prompt-chip" data-prompt="Summarize the strongest lead intelligence patterns from recent visits.">Lead intelligence</button>
+            <button class="btn btn-ghost btn-sm prompt-chip" data-prompt="Find likely false matches or identity conflicts in recent visits.">Find false matches</button>
+            <button class="btn btn-ghost btn-sm prompt-chip" data-prompt="Recommend scoring weight adjustments based on reviewed labels.">Tune scoring</button>
+        </div>
+
         <div style="display:flex;gap:0.75rem;">
-            <input id="chat-input" type="text" placeholder="Analyze suspicious patterns, compare links, summarize a fingerprint..." style="flex:1;">
+            <input id="chat-input" type="text" value="{{ initial_message }}" placeholder="Analyze suspicious patterns, compare links, summarize a fingerprint..." style="flex:1;">
             <button id="send-btn" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Send</button>
         </div>
     </div>
@@ -45,6 +52,18 @@
             <div class="toggle-row">
                 <label>Identified visits</label>
                 <span>{{ identified_visits }}</span>
+            </div>
+            <div class="toggle-row">
+                <label>High risk</label>
+                <span>{{ high_risk_visits }}</span>
+            </div>
+            <div class="toggle-row">
+                <label>Needs review</label>
+                <span>{{ unreviewed_high_risk }}</span>
+            </div>
+            <div class="toggle-row">
+                <label>Reviewed labels</label>
+                <span>{{ reviewed_visits }}</span>
             </div>
         </div>
 
@@ -139,5 +158,14 @@
     inputEl.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') sendMessage();
     });
+    document.querySelectorAll('.prompt-chip').forEach((button) => {
+        button.addEventListener('click', () => {
+            inputEl.value = button.dataset.prompt;
+            inputEl.focus();
+        });
+    });
+    if (inputEl.value.trim()) {
+        setTimeout(sendMessage, 150);
+    }
 </script>
 {% endblock %}

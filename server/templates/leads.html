@@ -22,7 +22,8 @@
             </tr>
         </thead>
         <tbody>
-            {% for lead in leads %}
+            {% for card in lead_cards %}
+            {% set lead = card.lead %}
             <tr onclick="window.location='{{ url_for('dashboard.dashboard_leads.lead_detail', lead_id=lead.id) }}';" style="cursor:pointer;">
                 <td>
                     {% if lead.label %}
@@ -36,11 +37,22 @@
                 <td>{{ lead.email or "Anonymous" }}</td>
                 <td>{{ lead.country or "Unknown" }}</td>
                 <td>{{ lead.device_type or "?" }} / {{ lead.os_family or "?" }}</td>
-                <td>{{ lead.total_visits }}</td>
+                <td>
+                    <div>{{ lead.total_visits }}</div>
+                    <div style="font-size:0.76rem;color:var(--text-secondary);">
+                        ID {{ card.avg_identity if card.avg_identity is not none else '-' }} · Risk {{ card.avg_risk if card.avg_risk is not none else '-' }}
+                    </div>
+                </td>
                 <td>{{ lead.last_seen.strftime('%Y-%m-%d %H:%M') if lead.last_seen else '-' }}</td>
                 <td>
-                    {% if lead.is_vpn %}
-                    <span class="badge badge-danger">VPN</span>
+                    {% if card.avg_risk is not none and card.avg_risk >= 50 %}
+                    <span class="badge badge-danger">High risk</span>
+                    {% elif card.open_review_count > 0 %}
+                    <span class="badge badge-warning">{{ card.open_review_count }} review</span>
+                    {% elif card.reviewed_count > 0 %}
+                    <span class="badge badge-success">Reviewed</span>
+                    {% elif lead.is_vpn %}
+                    <span class="badge badge-warning">VPN</span>
                     {% else %}
                     <span class="badge badge-success">Clean</span>
                     {% endif %}

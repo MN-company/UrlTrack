@@ -63,6 +63,13 @@ def test_beacon_accepts_new_fields(app, client, auth):
 
     with app.app_context():
         stored = db.session.get(Visit, visit_id)
+        assert stored.beacon_received_at is not None
+        assert stored.fingerprint_version == 1
+        assert stored.fingerprint_composite_v1
+        assert stored.identity_confidence == 0
+        assert stored.risk_score == 8
+        reasons = json.loads(stored.match_reasons_json)
+        assert reasons["risk"] == ["adblock_or_privacy_extension"]
         assert stored.screen_depth == 24
         assert stored.pixel_ratio == 2.0
         assert stored.touch_points == 0
@@ -102,6 +109,7 @@ def test_beacon_rejects_invalid_dwell(app, client, auth):
     with app.app_context():
         stored = db.session.get(Visit, visit_id)
         assert stored.canvas_hash == "abcd1234"
+        assert stored.beacon_received_at is not None
         assert stored.dwell_ms is None
 
 
@@ -109,3 +117,105 @@ def test_beacon_missing_token_returns_403(app, client):
     visit_id = _create_visit(app)
     response = client.post("/api/beacon", json={"visit_id": visit_id, "canvas_hash": "abcd1234"})
     assert response.status_code == 403
+
+
+def test_beacon_same_prior_email_and_fingerprint_scores_identity(app, client, auth):
+    from server.extensions import db
+    from server.models import Link, Visit
+    from server.utils import sign_visit_token
+
+    auth.login()
+    with app.app_context():
+        link = Link(slug="identity", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        prior = Visit(
+            link_id=link.id,
+            ip_address="1.1.1.1",
+            email="same@example.com",
+            canvas_hash="canvas-a",
+            audio_fp="audio-a",
+            webgl_vendor="vendor",
+            webgl_renderer="renderer",
+            timezone="Europe/Rome",
+            screen_res="1920x1080",
+            pixel_ratio=2.0,
+            device_type="Desktop",
+            os_family="Mac OS X",
+        )
+        current = Visit(
+            link_id=link.id,
+            ip_address="1.1.1.2",
+            email="same@example.com",
+            device_type="Desktop",
+            os_family="Mac OS X",
+        )
+        db.session.add_all([prior, current])
+        db.session.commit()
+        visit_id = current.id
+
+    token = sign_visit_token(visit_id)
+    response = client.post(
+        "/api/beacon",
+        json={
+            "visit_id": visit_id,
+            "visit_token": token,
+            "canvas_hash": "canvas-a",
+            "audio_fp": "audio-a",
+            "vendor": "vendor",
+            "renderer": "renderer",
+            "timezone": "Europe/Rome",
+            "screen_res": "1920x1080",
+            "pixel_ratio": 2.0,
+        },
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        stored = db.session.get(Visit, visit_id)
+        reasons = json.loads(stored.match_reasons_json)
+        assert stored.identity_confidence >= 70
+        assert stored.risk_score == 0
+        assert "same_email" in reasons["identity"]
+        assert "same_canvas" in reasons["identity"]
+
+
+def test_human_false_match_label_reduces_future_identity_score(app, client, auth):
+    from server.extensions import db
+    from server.models import Link, Visit
+    from server.utils import sign_visit_token
+
+    auth.login()
+    with app.app_context():
+        link = Link(slug="false-match", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        prior = Visit(
+            link_id=link.id,
+            ip_address="1.1.1.1",
+            email="same@example.com",
+            canvas_hash="canvas-x",
+            audio_fp="audio-x",
+            review_label="false_match",
+        )
+        current = Visit(link_id=link.id, ip_address="1.1.1.2", email="same@example.com")
+        db.session.add_all([prior, current])
+        db.session.commit()
+        visit_id = current.id
+
+    response = client.post(
+        "/api/beacon",
+        json={
+            "visit_id": visit_id,
+            "visit_token": sign_visit_token(visit_id),
+            "canvas_hash": "canvas-x",
+            "audio_fp": "audio-x",
+        },
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        stored = db.session.get(Visit, visit_id)
+        reasons = json.loads(stored.match_reasons_json)
+        assert stored.identity_confidence < 50
+        assert "human_marked_false_match" in reasons["conflicts"]

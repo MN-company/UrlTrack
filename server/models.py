@@ -70,6 +70,7 @@ class Visit(DatabaseModel):
         Index("ix_visit_ip", "ip_address"),
         Index("ix_visit_email", "email"),
         Index("ix_visit_etag", "etag"),
+        Index("ix_visit_fingerprint_composite_v1", "fingerprint_composite_v1"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -129,6 +130,18 @@ class Visit(DatabaseModel):
     ua_brands: Mapped[Optional[str]] = mapped_column(String(256))
     etag: Mapped[Optional[str]] = mapped_column(String(64))
     fpjs_confidence: Mapped[Optional[float]] = mapped_column(Float)
+    fingerprint_version: Mapped[Optional[int]] = mapped_column(Integer)
+    fingerprint_composite_v1: Mapped[Optional[str]] = mapped_column(String(64))
+    identity_confidence: Mapped[Optional[int]] = mapped_column(Integer)
+    risk_score: Mapped[Optional[int]] = mapped_column(Integer)
+    match_reasons_json: Mapped[Optional[str]] = mapped_column(Text)
+    cluster_conflict: Mapped[bool] = mapped_column(Boolean, default=False)
+    conflict_reason: Mapped[Optional[str]] = mapped_column(Text)
+    beacon_received_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    notification_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    review_label: Mapped[Optional[str]] = mapped_column(String(32))
+    review_note: Mapped[Optional[str]] = mapped_column(Text)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     detected_sessions: Mapped[Optional[str]] = mapped_column(Text)
     visit_complete: Mapped[bool] = mapped_column(Boolean, default=False)
 

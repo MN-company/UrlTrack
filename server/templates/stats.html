@@ -88,7 +88,7 @@
                     <th>Time</th>
                     <th>Visitor</th>
                     <th>Fingerprint</th>
-                    <th>Risk</th>
+                    <th>Trust</th>
                 </tr>
             </thead>
             <tbody>
@@ -109,12 +109,16 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if visit.is_suspicious %}
-                        <span class="badge badge-danger">Suspicious</span>
-                        {% elif visit.is_vpn or visit.is_proxy %}
-                        <span class="badge badge-warning">VPN/Proxy</span>
+                        <span class="badge badge-blue">ID {{ visit.identity_confidence if visit.identity_confidence is not none else 0 }}</span>
+                        {% if visit.risk_score and visit.risk_score >= 50 %}
+                        <span class="badge badge-danger">Risk {{ visit.risk_score }}</span>
+                        {% elif visit.risk_score and visit.risk_score > 0 %}
+                        <span class="badge badge-warning">Risk {{ visit.risk_score }}</span>
                         {% else %}
-                        <span class="badge badge-success">Clean</span>
+                        <span class="badge badge-success">Risk 0</span>
+                        {% endif %}
+                        {% if visit.review_label %}
+                        <span class="badge badge-purple">{{ visit.review_label }}</span>
                         {% endif %}
                     </td>
                 </tr>

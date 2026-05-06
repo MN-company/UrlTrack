@@ -131,4 +131,4 @@ def test_block_bots_does_not_block_cloud_visitor_without_block_vpn(app, client, 
     assert len(queue.items) == 2
     assert queue.items[0]["type"] == "enrich_visit"
     assert queue.items[0]["notify"] is False
-    assert queue.items[1]["type"] == "mark_visit_complete"
+    assert queue.items[1]["type"] == "dispatch_visit_after_timeout"

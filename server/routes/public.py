@@ -380,7 +380,13 @@ def redirect_to_url(slug):
     response.headers["Cache-Control"] = "private, max-age=31536000"
     if visit.id:
         try:
-            log_queue.put({"type": "mark_visit_complete", "visit_id": visit.id})
+            log_queue.put(
+                {
+                    "type": "dispatch_visit_after_timeout",
+                    "visit_id": visit.id,
+                    "wait_seconds": Config.BEACON_WAIT_SECONDS,
+                }
+            )
         except Exception:
             pass
     return response

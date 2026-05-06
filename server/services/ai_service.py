@@ -1,3 +1,4 @@
+import json
 import re
 from typing import Iterable
 
@@ -5,7 +6,7 @@ from sqlalchemy import func
 
 from ..config import Config
 from ..extensions import db
-from ..models import Link, Visit
+from ..models import Lead, Link, Visit
 
 
 class AIService:
@@ -75,6 +76,10 @@ class AIService:
                     f"Email: {visit.email or 'Anonymous'}\n"
                     f"Device: {visit.os_family or 'Unknown'} / {visit.device_type or 'Unknown'}\n"
                     f"Fingerprint: {visit.canvas_hash or visit.etag or 'None'}\n"
+                    f"Identity Confidence: {visit.identity_confidence if visit.identity_confidence is not None else 'Unknown'}\n"
+                    f"Risk Score: {visit.risk_score if visit.risk_score is not None else 'Unknown'}\n"
+                    f"Review Label: {visit.review_label or 'None'}\n"
+                    f"Match Reasons: {visit.match_reasons_json or '{}'}\n"
                     f"Link: /{visit.link.slug if visit.link else 'unknown'}\n"
                 )
 
@@ -100,7 +105,53 @@ class AIService:
             visits = Visit.query.filter_by(ip_address=ip_address).order_by(Visit.timestamp.desc()).limit(50).all()
             sections.append(cls._summarize_visits(visits, f"IP CONTEXT: {ip_address}"))
 
+        lead_match = re.search(r"@lead:(\d+)", clean_message)
+        if lead_match:
+            lead = db.session.get(Lead, int(lead_match.group(1)))
+            if lead:
+                filters = []
+                if lead.email:
+                    filters.append(Visit.email == lead.email)
+                canvas_hashes = cls._safe_json_list(lead.all_canvas_hashes)
+                if canvas_hashes:
+                    filters.append(Visit.canvas_hash.in_(canvas_hashes))
+                visits = (
+                    Visit.query.filter(db.or_(*filters)).order_by(Visit.timestamp.desc()).limit(50).all()
+                    if filters else []
+                )
+                avg_identity = cls._avg_int([visit.identity_confidence for visit in visits])
+                avg_risk = cls._avg_int([visit.risk_score for visit in visits])
+                labels = sorted({visit.review_label for visit in visits if visit.review_label})
+                sections.append(
+                    "\n=== LEAD CONTEXT ===\n"
+                    f"Lead ID: {lead.id}\n"
+                    f"Email: {lead.email or 'Anonymous'}\n"
+                    f"Primary Fingerprint: {lead.primary_canvas_hash or 'None'}\n"
+                    f"Visits: {len(visits)}\n"
+                    f"Avg Identity Confidence: {avg_identity if avg_identity is not None else 'Unknown'}\n"
+                    f"Avg Risk Score: {avg_risk if avg_risk is not None else 'Unknown'}\n"
+                    f"Human Labels: {', '.join(labels) if labels else 'None'}\n"
+                    f"{cls._summarize_visits(visits, f'LEAD VISITS: {lead.id}')}"
+                )
+
         return clean_message, "\n".join(sections)
+
+    @staticmethod
+    def _safe_json_list(value: str | None) -> list[str]:
+        if not value:
+            return []
+        try:
+            data = json.loads(value)
+        except (TypeError, ValueError):
+            return []
+        return data if isinstance(data, list) else []
+
+    @staticmethod
+    def _avg_int(values) -> int | None:
+        cleaned = [value for value in values if isinstance(value, int)]
+        if not cleaned:
+            return None
+        return round(sum(cleaned) / len(cleaned))
 
     @classmethod
     def initialize(cls):
@@ -170,6 +221,9 @@ class AIService:
         total_visits = Visit.query.count()
         total_links = Link.query.count()
         identified_visits = Visit.query.filter(Visit.email.isnot(None)).count()
+        high_risk_visits = Visit.query.filter(Visit.risk_score >= 50).count()
+        unreviewed_high_risk = Visit.query.filter(Visit.risk_score >= 50, Visit.review_label.is_(None)).count()
+        reviewed_visits = Visit.query.filter(Visit.review_label.isnot(None)).count()
 
         recent_visits = Visit.query.order_by(Visit.timestamp.desc()).limit(5).all()
         recent_text = "\n".join(
@@ -197,11 +251,16 @@ class AIService:
 
         return (
             "You are a security analytics assistant for UrlTrack.\n"
-            "Focus on visits, links, fingerprints, IP patterns, and access-control signals.\n"
+            "Focus on lead intelligence, visit review, identity confidence, risk score, fingerprints, IP patterns, and access-control signals.\n"
+            "Treat deterministic scores as source-of-truth signals, not as guesses to override.\n"
+            "When helpful, recommend which visits need human review labels: same_user, false_match, bot, clean, suspicious, important.\n"
             "Be concise, practical, and explicit about uncertainty.\n\n"
             f"Total Visits: {total_visits}\n"
             f"Total Links: {total_links}\n"
             f"Identified Visits: {identified_visits}\n"
+            f"High Risk Visits: {high_risk_visits}\n"
+            f"Unreviewed High Risk Visits: {unreviewed_high_risk}\n"
+            f"Reviewed Visits: {reviewed_visits}\n"
             f"Top Countries: {country_text}\n"
             f"Top Devices: {device_text}\n"
             f"Recent Activity:\n{recent_text}\n"

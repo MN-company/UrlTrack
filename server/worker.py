@@ -46,6 +46,9 @@ def _build_visit_payload(visit: Visit) -> dict:
         "org": visit.org,
         "dwell_ms": visit.dwell_ms,
         "extensions_detected": visit.extensions_detected,
+        "identity_confidence": visit.identity_confidence,
+        "risk_score": visit.risk_score,
+        "match_reasons": visit.match_reasons_json,
     }
 
 
@@ -73,6 +76,14 @@ def _fire_telegram(bot_token: str, chat_id: str, visit_payload: dict) -> None:
         vpn_str = "⚠️ VPN/Proxy" if visit_payload.get("is_vpn") else "✅ Clean"
         dwell_ms = visit_payload.get("dwell_ms")
         dwell_str = f"\n⏱ {_telegram_escape(str(int(dwell_ms // 1000)))}s" if isinstance(dwell_ms, int) and dwell_ms > 0 else ""
+        identity = visit_payload.get("identity_confidence")
+        risk = visit_payload.get("risk_score")
+        score_parts = []
+        if isinstance(identity, int):
+            score_parts.append(f"ID {_telegram_escape(str(identity))}%")
+        if isinstance(risk, int):
+            score_parts.append(f"Risk {_telegram_escape(str(risk))}%")
+        score_str = "\n🧠 " + " · ".join(score_parts) if score_parts else ""
 
         ext_str = ""
         extensions_detected = visit_payload.get("extensions_detected")
@@ -89,7 +100,7 @@ def _fire_telegram(bot_token: str, chat_id: str, visit_payload: dict) -> None:
             f"📍 {city}, {country}\n"
             f"📧 {email}\n"
             f"{emoji_device.get(visit_payload.get('device_type'), '🖥️')} {os_family} · {vpn_str}"
-            f"{dwell_str}{ext_str}\n"
+            f"{score_str}{dwell_str}{ext_str}\n"
             f"🕐 {timestamp}"
         )
 
@@ -124,6 +135,36 @@ def _dispatch_telegram(app, visit: Visit) -> None:
     if bot_token and chat_id:
         payload = _build_visit_payload(visit)
         threading.Thread(target=_fire_telegram, args=(bot_token, chat_id, payload), daemon=True).start()
+
+
+def _dispatch_notifications_once(app, visit: Visit) -> None:
+    if visit.notification_sent_at:
+        return
+
+    visit.notification_sent_at = datetime.utcnow()
+    db.session.commit()
+
+    visit_payload = _build_visit_payload(visit)
+    webhook_url = app.config.get("WEBHOOK_URL", "")
+    webhook_secret = app.config.get("WEBHOOK_SECRET", "")
+    if webhook_url:
+        threading.Thread(
+            target=_fire_webhook,
+            args=(webhook_url, webhook_secret, visit_payload),
+            daemon=True,
+        ).start()
+    _dispatch_telegram(app, visit)
+
+
+def _schedule_dispatch_after_timeout(visit_id: int, wait_seconds: int) -> None:
+    wait_seconds = max(0, int(wait_seconds or 0))
+
+    def _enqueue():
+        log_queue.put({"type": "dispatch_visit", "visit_id": visit_id, "missing_beacon": True})
+
+    timer = threading.Timer(wait_seconds, _enqueue)
+    timer.daemon = True
+    timer.start()
 
 
 def _upsert_lead(app, visit: Visit) -> None:
@@ -399,6 +440,7 @@ def _handle_task(app, task):
                 notify = task.get("notify", True)
 
                 from .utils import get_geo_data, get_reverse_dns
+                from .services.scoring import apply_visit_scoring
 
                 raw_ip = task.get("ip")
                 if raw_ip:
@@ -428,27 +470,51 @@ def _handle_task(app, task):
                     if match:
                         visit.email = match.email
 
+                apply_visit_scoring(
+                    visit,
+                    missing_beacon=not bool(visit.beacon_received_at),
+                    secret=app.config.get("FINGERPRINT_SECRET"),
+                )
                 db.session.commit()
                 _upsert_lead(app, visit)
 
-                visit_payload = _build_visit_payload(visit)
-                webhook_url = app.config.get("WEBHOOK_URL", "")
-                webhook_secret = app.config.get("WEBHOOK_SECRET", "")
-                if webhook_url:
-                    threading.Thread(
-                        target=_fire_webhook,
-                        args=(webhook_url, webhook_secret, visit_payload),
-                        daemon=True,
-                    ).start()
-
                 if notify or visit.visit_complete:
-                    _dispatch_telegram(app, visit)
+                    _dispatch_notifications_once(app, visit)
+            elif task.get("type") == "dispatch_visit_after_timeout":
+                visit_id = task.get("visit_id")
+                if visit_id:
+                    _schedule_dispatch_after_timeout(visit_id, task.get("wait_seconds", 0))
+            elif task.get("type") == "dispatch_visit":
+                visit = db.session.get(Visit, task.get("visit_id"))
+                if visit is None or visit.notification_sent_at:
+                    return
+                from .services.scoring import apply_visit_scoring
+
+                missing_beacon = not bool(visit.beacon_received_at)
+                if missing_beacon:
+                    visit.visit_complete = True
+                apply_visit_scoring(
+                    visit,
+                    missing_beacon=missing_beacon,
+                    secret=app.config.get("FINGERPRINT_SECRET"),
+                )
+                db.session.commit()
+                _upsert_lead(app, visit)
+                _dispatch_notifications_once(app, visit)
             elif task.get("type") == "mark_visit_complete":
                 visit = db.session.get(Visit, task.get("visit_id"))
                 if visit:
                     visit.visit_complete = True
+                    from .services.scoring import apply_visit_scoring
+
+                    apply_visit_scoring(
+                        visit,
+                        missing_beacon=not bool(visit.beacon_received_at),
+                        secret=app.config.get("FINGERPRINT_SECRET"),
+                    )
                     db.session.commit()
-                    _dispatch_telegram(app, visit)
+                    _upsert_lead(app, visit)
+                    _dispatch_notifications_once(app, visit)
             else:
                 print(f"Worker ignored unknown task type: {task.get('type')}")
     except Exception as exc:

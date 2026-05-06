@@ -72,6 +72,12 @@ def _link_form_values(form):
 def dashboard_home():
     links = Link.query.order_by(Link.created_at.desc()).all()
     visits = Visit.query.order_by(Visit.timestamp.desc()).limit(25).all()
+    priority_visits = (
+        Visit.query.filter(db.or_(Visit.risk_score >= 50, Visit.cluster_conflict.is_(True)))
+        .order_by(Visit.timestamp.desc())
+        .limit(6)
+        .all()
+    )
     identified_visitors = (
         db.session.query(func.count(distinct(Visit.email)))
         .filter(Visit.email.isnot(None))
@@ -82,7 +88,10 @@ def dashboard_home():
         "dashboard.html",
         links=links,
         visits=visits,
+        priority_visits=priority_visits,
         identified_visitors=identified_visitors,
+        high_risk_visits=Visit.query.filter(Visit.risk_score >= 50).count(),
+        reviewed_visits=Visit.query.filter(Visit.review_label.isnot(None)).count(),
         total_visits=Visit.query.count(),
     )
 

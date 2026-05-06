@@ -52,6 +52,7 @@
                 <th>Link</th>
                 <th>Visitor</th>
                 <th>Device</th>
+                <th>Trust</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -71,6 +72,21 @@
                     {% endif %}
                 </td>
                 <td>
+                    <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+                        <span class="badge badge-blue">ID {{ visit.identity_confidence if visit.identity_confidence is not none else 0 }}</span>
+                        {% if visit.risk_score and visit.risk_score >= 50 %}
+                        <span class="badge badge-danger">Risk {{ visit.risk_score }}</span>
+                        {% elif visit.risk_score and visit.risk_score > 0 %}
+                        <span class="badge badge-warning">Risk {{ visit.risk_score }}</span>
+                        {% else %}
+                        <span class="badge badge-success">Risk 0</span>
+                        {% endif %}
+                        {% if visit.review_label %}
+                        <span class="badge badge-purple">{{ visit.review_label }}</span>
+                        {% endif %}
+                    </div>
+                </td>
+                <td>
                     {% if visit.canvas_hash %}
                     <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.canvas_hash) }}" class="btn btn-ghost">Fingerprint</a>
                     {% elif visit.etag %}
@@ -81,7 +97,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="5">No visits found for the selected filters.</td></tr>
+            <tr><td colspan="6">No visits found for the selected filters.</td></tr>
             {% endfor %}
         </tbody>
     </table>

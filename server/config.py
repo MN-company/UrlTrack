@@ -80,6 +80,8 @@ class Config:
     MALICIOUS_IP_REFRESH_SECONDS: int = _int_env("MALICIOUS_IP_REFRESH_SECONDS", 21600)
     MALICIOUS_IP_MIN_COUNT: int = _int_env("MALICIOUS_IP_MIN_COUNT", 1000)
     SMART_FOLLOWUP_HOURS: int = _int_env("SMART_FOLLOWUP_HOURS", 48)
+    BEACON_WAIT_SECONDS: int = _int_env("BEACON_WAIT_SECONDS", 3)
+    FINGERPRINT_SECRET: str = os.getenv("FINGERPRINT_SECRET", os.environ["SECRET_KEY"])
     RESERVED_SLUGS: FrozenSet[str] = frozenset(
         {
             "dashboard",
@@ -144,5 +146,7 @@ class Config:
             "MALICIOUS_IP_REFRESH_SECONDS": config.MALICIOUS_IP_REFRESH_SECONDS,
             "MALICIOUS_IP_MIN_COUNT": config.MALICIOUS_IP_MIN_COUNT,
             "SMART_FOLLOWUP_HOURS": config.SMART_FOLLOWUP_HOURS,
+            "BEACON_WAIT_SECONDS": config.BEACON_WAIT_SECONDS,
+            "FINGERPRINT_SECRET": config.FINGERPRINT_SECRET,
             "RESERVED_SLUGS": config.RESERVED_SLUGS,
         }

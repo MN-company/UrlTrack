@@ -1,10 +1,12 @@
 import json
+from datetime import datetime
 
 from flask import Blueprint, request
 
 from ..config import Config
-from ..extensions import csrf, db, limiter
+from ..extensions import csrf, db, limiter, log_queue
 from ..models import Visit
+from ..services.scoring import apply_visit_scoring
 from ..utils import safe_json, sanitize, verify_visit_token
 
 
@@ -144,7 +146,14 @@ def receive_beacon():
         dwell_ms = _coerce_int(data.get("dwell_ms"), 0, 300000)
         if dwell_ms is not None:
             visit.dwell_ms = dwell_ms
+        visit.beacon_received_at = datetime.utcnow()
+        visit.visit_complete = True
+        apply_visit_scoring(visit, secret=Config.FINGERPRINT_SECRET)
         db.session.commit()
+        try:
+            log_queue.put({"type": "enrich_visit", "visit_id": visit.id, "notify": True})
+        except Exception:
+            pass
     except Exception as exc:
         print(f"Beacon Error: {exc}")
         db.session.rollback()

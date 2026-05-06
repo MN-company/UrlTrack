@@ -70,3 +70,38 @@ def test_leads_dashboard_detail_and_update(app, client, auth):
         updated = db.session.get(Lead, lead_id)
         assert updated.label == "hot"
         assert updated.notes == "Important lead"
+
+
+def test_visit_review_labels_visit_and_updates_score(app, client, auth):
+    from server.extensions import db
+    from server.models import Link, Visit
+
+    auth.login()
+    with app.app_context():
+        link = Link(slug="review-a", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        visit = Visit(
+            link_id=link.id,
+            ip_address="1.1.1.1",
+            canvas_hash="review-hash",
+            beacon_received_at=None,
+        )
+        db.session.add(visit)
+        db.session.commit()
+        visit_id = visit.id
+
+    response = client.post(
+        f"/dashboard/visits/{visit_id}/review",
+        data={"review_label": "suspicious", "review_note": "manual review"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+
+    with app.app_context():
+        updated = db.session.get(Visit, visit_id)
+        assert updated.review_label == "suspicious"
+        assert updated.review_note == "manual review"
+        assert updated.reviewed_at is not None
+        assert updated.risk_score >= 30
+        assert "human_marked_suspicious" in updated.match_reasons_json

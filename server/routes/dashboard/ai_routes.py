@@ -27,7 +27,11 @@ def ai_console():
         total_visits=Visit.query.count(),
         total_links=Link.query.count(),
         identified_visits=Visit.query.filter(Visit.email.isnot(None)).count(),
+        high_risk_visits=Visit.query.filter(Visit.risk_score >= 50).count(),
+        unreviewed_high_risk=Visit.query.filter(Visit.risk_score >= 50, Visit.review_label.is_(None)).count(),
+        reviewed_visits=Visit.query.filter(Visit.review_label.isnot(None)).count(),
         recent_visits=Visit.query.order_by(Visit.timestamp.desc()).limit(8).all(),
+        initial_message=(request.args.get("message") or "").strip(),
     )
 
 

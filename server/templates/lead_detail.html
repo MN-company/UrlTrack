@@ -21,6 +21,8 @@
             <div><strong>Device</strong><div>{{ lead.device_type or "-" }} / {{ lead.os_family or "-" }}</div></div>
             <div><strong>Total Visits</strong><div>{{ lead.total_visits }}</div></div>
             <div><strong>Last Seen</strong><div>{{ lead.last_seen.strftime('%Y-%m-%d %H:%M:%S') if lead.last_seen else '-' }}</div></div>
+            <div><strong>Avg Identity</strong><div>{{ avg_identity if avg_identity is not none else "-" }}%</div></div>
+            <div><strong>Avg Risk</strong><div>{{ avg_risk if avg_risk is not none else "-" }}%</div></div>
         </div>
     </div>
 
@@ -56,6 +58,96 @@
                 {% endfor %}
             </div>
         </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:1.5rem;">
+    <div class="card-header">
+        <div>
+            <h3 style="margin-bottom:4px;">AI-Ready Review Queue</h3>
+            <p style="color:var(--text-muted);margin:0;">Human labels become training data and also influence deterministic scoring for future matches.</p>
+        </div>
+        <a class="btn btn-ghost" href="{{ url_for('dashboard.dashboard_ai.ai_console') }}?message={{ ('Explain lead ' ~ (lead.email or lead.primary_canvas_hash or lead.id))|urlencode }}">Ask AI</a>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+        {% for visit in visits %}
+        {% set reasons = reason_json(visit) %}
+        <div style="padding:1rem;border:1px solid rgba(148,163,184,0.16);border-radius:14px;background:rgba(15,23,42,0.34);">
+            <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;">
+                <div>
+                    <div class="text-mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+                    <div style="color:var(--text-secondary);font-size:0.85rem;margin-top:0.25rem;">
+                        /{{ visit.link.slug if visit.link else 'unknown' }} · {{ visit.email or visit.ip_address }} · {{ visit.city or 'Unknown' }}{% if visit.country %}, {{ visit.country }}{% endif %}
+                    </div>
+                </div>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end;">
+                    <span class="badge badge-blue">ID {{ visit.identity_confidence if visit.identity_confidence is not none else 0 }}</span>
+                    {% if visit.risk_score and visit.risk_score >= 50 %}
+                    <span class="badge badge-danger">Risk {{ visit.risk_score }}</span>
+                    {% elif visit.risk_score and visit.risk_score > 0 %}
+                    <span class="badge badge-warning">Risk {{ visit.risk_score }}</span>
+                    {% else %}
+                    <span class="badge badge-success">Risk 0</span>
+                    {% endif %}
+                    {% if visit.beacon_received_at %}
+                    <span class="badge badge-success">Beacon</span>
+                    {% else %}
+                    <span class="badge badge-warning">No beacon</span>
+                    {% endif %}
+                    {% if visit.review_label %}
+                    <span class="badge badge-purple">{{ visit.review_label }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;">
+                <div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Identity reasons</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
+                        {% for reason in reasons.get('identity', []) %}
+                        <span class="badge badge-blue">{{ reason }}</span>
+                        {% else %}
+                        <span class="text-muted">No strong identity evidence.</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Risk reasons</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
+                        {% for reason in reasons.get('risk', []) %}
+                        <span class="badge badge-warning">{{ reason }}</span>
+                        {% else %}
+                        <span class="text-muted">No risk reasons.</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Conflicts</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
+                        {% for reason in reasons.get('conflicts', []) %}
+                        <span class="badge badge-danger">{{ reason }}</span>
+                        {% else %}
+                        <span class="text-muted">No conflicts.</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ url_for('dashboard.dashboard_leads.visit_review', visit_id=visit.id) }}" style="margin-top:0.9rem;display:grid;grid-template-columns:180px 1fr auto;gap:0.6rem;align-items:center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="review_label">
+                    <option value="">No label</option>
+                    {% for label in review_labels %}
+                    <option value="{{ label }}" {% if visit.review_label == label %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <input type="text" name="review_note" value="{{ visit.review_note or '' }}" placeholder="Optional analyst note">
+                <button class="btn btn-primary btn-sm" type="submit">Save review</button>
+            </form>
+        </div>
+        {% else %}
+        <div class="text-muted">No correlated visits for this lead yet.</div>
+        {% endfor %}
     </div>
 </div>
 
