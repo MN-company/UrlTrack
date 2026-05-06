@@ -29,6 +29,14 @@ def _validate_visit_token(data):
     return verified_id == visit_id
 
 
+def _visit_from_payload(data):
+    try:
+        visit_id = int(data.get("visit_id", 0))
+    except (TypeError, ValueError):
+        return None
+    return db.session.get(Visit, visit_id)
+
+
 def _clean_partial_email(value: str) -> str:
     if not value:
         return ""
@@ -91,7 +99,7 @@ def receive_beacon():
         if not _validate_visit_token(data):
             return "Unauthorized", 403
 
-        visit = db.session.get(Visit, int(data.get("visit_id", 0)))
+        visit = _visit_from_payload(data)
         if visit is None:
             return "Not found", 404
 
@@ -168,7 +176,7 @@ def log_session():
         if not _validate_visit_token(data):
             return "Unauthorized", 403
 
-        visit = db.session.get(Visit, int(data.get("visit_id", 0)))
+        visit = _visit_from_payload(data)
         sessions = data.get("sessions") or []
         if visit is None or not isinstance(sessions, list):
             return "OK", 200
@@ -203,7 +211,10 @@ def partial_email():
     if not visit_id or not partial:
         return "Missing data", 400
 
-    visit = db.session.get(Visit, int(visit_id))
+    try:
+        visit = db.session.get(Visit, int(visit_id))
+    except (TypeError, ValueError):
+        return "Not found", 404
     if visit is None:
         return "Not found", 404
 
@@ -225,7 +236,7 @@ def dwell():
         if not _validate_visit_token(data):
             return "Unauthorized", 403
 
-        visit = db.session.get(Visit, int(data.get("visit_id", 0)))
+        visit = _visit_from_payload(data)
         if visit is None:
             return "Not found", 404
 

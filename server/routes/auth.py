@@ -44,6 +44,13 @@ def _passkey_rp_id() -> str:
     return Config.SERVER_URL.replace("https://", "").replace("http://", "").split(":")[0].split("/")[0]
 
 
+def _session_user(value):
+    try:
+        return db.session.get(User, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
 @bp.route("/setup", methods=["GET", "POST"])
 @limiter.limit(Config.RATE_LIMIT_AUTH)
 def setup():
@@ -133,7 +140,7 @@ def login():
                 flash("Session expired. Please login again.", "error")
                 return redirect(url_for("auth.login"))
 
-            user = db.session.get(User, int(user_id))
+            user = _session_user(user_id)
             if user is None:
                 flash("User not found.", "error")
                 return redirect(url_for("auth.login"))
@@ -196,9 +203,15 @@ def passkey_auth_options():
 
     allow_credentials = []
     for credential in user.passkeys:
-        allow_credentials.append(
-            PublicKeyCredentialDescriptor(id=base64.urlsafe_b64decode(credential["id"] + "=="))
-        )
+        try:
+            allow_credentials.append(
+                PublicKeyCredentialDescriptor(id=base64.urlsafe_b64decode(credential["id"] + "=="))
+            )
+        except (KeyError, ValueError):
+            continue
+
+    if not allow_credentials:
+        return jsonify({"error": "No valid passkeys registered"}), 404
 
     options = generate_authentication_options(
         rp_id=_passkey_rp_id(),
@@ -219,7 +232,7 @@ def passkey_auth_verify():
     if not challenge or not user_id:
         return jsonify({"verified": False, "error": "Session expired"}), 400
 
-    user = db.session.get(User, int(user_id))
+    user = _session_user(user_id)
     if user is None:
         return jsonify({"verified": False, "error": "User not found"}), 404
 

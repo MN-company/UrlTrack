@@ -39,6 +39,18 @@ def _public_link_url(slug: str) -> str:
     return f"{base_url}/{slug}" if base_url else f"/{slug}"
 
 
+def _coerce_int(value, default=0, minimum=None, maximum=None):
+    try:
+        parsed = int(sanitize(value, 10) or default)
+    except (TypeError, ValueError):
+        return default
+    if minimum is not None and parsed < minimum:
+        return default
+    if maximum is not None and parsed > maximum:
+        return default
+    return parsed
+
+
 def _link_form_values(form):
     raw_countries = sanitize(form.get("allowed_countries"), 200)
     allowed_countries_val = ",".join(
@@ -59,10 +71,16 @@ def _link_form_values(form):
         "email_policy": sanitize(form.get("email_policy"), 20) or "all",
         "allowed_countries": allowed_countries_val,
         "schedule_timezone": sanitize(form.get("schedule_timezone"), 64) or "UTC",
-        "schedule_start_hour": int(form.get("schedule_start_hour")) if sanitize(form.get("schedule_start_hour"), 2) else None,
-        "schedule_end_hour": int(form.get("schedule_end_hour")) if sanitize(form.get("schedule_end_hour"), 2) else None,
-        "max_clicks": int(sanitize(form.get("max_clicks"), 10) or 0),
-        "expiration_minutes": int(sanitize(form.get("expiration_minutes"), 10) or 0),
+        "schedule_start_hour": (
+            _coerce_int(form.get("schedule_start_hour"), default=None, minimum=0, maximum=23)
+            if sanitize(form.get("schedule_start_hour"), 2) else None
+        ),
+        "schedule_end_hour": (
+            _coerce_int(form.get("schedule_end_hour"), default=None, minimum=0, maximum=23)
+            if sanitize(form.get("schedule_end_hour"), 2) else None
+        ),
+        "max_clicks": _coerce_int(form.get("max_clicks"), default=0, minimum=0),
+        "expiration_minutes": _coerce_int(form.get("expiration_minutes"), default=0, minimum=0),
     }
 
 
@@ -239,6 +257,7 @@ def edit_link(slug: str):
 @bp.route("/qr/<slug>")
 @login_required
 def qr_code(slug: str):
+    Link.query.filter_by(slug=slug).first_or_404()
     full_url = _public_link_url(slug)
     qr = segno.make(full_url)
     buffer = io.BytesIO()
@@ -281,9 +300,11 @@ def settings():
             telegram_chat_id = sanitize(request.form.get("telegram_chat_id"), 255)
             mask_with_isgd = "mask_with_isgd" in request.form
             trust_proxy_headers = "trust_proxy_headers" in request.form
-            visit_retention_days = int(
-                sanitize(request.form.get("visit_retention_days"), 10)
-                or current_app.config.get("VISIT_RETENTION_DAYS", Config.VISIT_RETENTION_DAYS)
+            visit_retention_days = _coerce_int(
+                request.form.get("visit_retention_days"),
+                default=current_app.config.get("VISIT_RETENTION_DAYS", Config.VISIT_RETENTION_DAYS),
+                minimum=0,
+                maximum=3650,
             )
 
             restart_required = False

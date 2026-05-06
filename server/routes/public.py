@@ -90,6 +90,14 @@ def _safe_url_or_none(url: str):
         return None
 
 
+def _visit_from_form(value):
+    try:
+        visit_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return db.session.get(Visit, visit_id)
+
+
 def _build_public_csp(nonce: str) -> str:
     return (
         "default-src 'self'; "
@@ -406,7 +414,7 @@ def verify_captcha():
 
     client_ip = get_client_ip(request, Config.TRUST_PROXY_HEADERS)
     if verify_turnstile(turnstile_token, client_ip):
-        visit = db.session.get(Visit, int(visit_id)) if visit_id else None
+        visit = _visit_from_form(visit_id)
         if visit is not None:
             if canvas_hash and not visit.canvas_hash:
                 visit.canvas_hash = canvas_hash
@@ -449,7 +457,7 @@ def verify_password():
     link = Link.query.filter_by(slug=slug).first_or_404()
     user_hash = hashlib.sha256(password.encode()).hexdigest()
     if user_hash == link.password_hash:
-        visit = db.session.get(Visit, int(visit_id)) if visit_id else None
+        visit = _visit_from_form(visit_id)
         if visit is not None:
             db.session.commit()
             try:
@@ -503,7 +511,7 @@ def verify_email():
             hide_nav=True,
         )
 
-    visit = db.session.get(Visit, int(visit_id)) if visit_id else None
+    visit = _visit_from_form(visit_id)
     if visit is not None:
         visit.email = email
         db.session.commit()

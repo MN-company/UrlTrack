@@ -141,8 +141,16 @@ def _dispatch_notifications_once(app, visit: Visit) -> None:
     if visit.notification_sent_at:
         return
 
-    visit.notification_sent_at = datetime.utcnow()
+    sent_at = datetime.utcnow()
+    updated = (
+        Visit.query.filter(Visit.id == visit.id, Visit.notification_sent_at.is_(None))
+        .update({"notification_sent_at": sent_at}, synchronize_session=False)
+    )
+    if not updated:
+        db.session.rollback()
+        return
     db.session.commit()
+    visit.notification_sent_at = sent_at
 
     visit_payload = _build_visit_payload(visit)
     webhook_url = app.config.get("WEBHOOK_URL", "")

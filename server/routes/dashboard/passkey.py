@@ -30,10 +30,12 @@ def _passkey_rp_id() -> str:
 @login_required
 def passkey_register_options():
     user = db.session.get(User, current_user.id)
-    existing_credentials = [
-        PublicKeyCredentialDescriptor(id=base64.urlsafe_b64decode(item["id"] + "=="))
-        for item in user.passkeys
-    ]
+    existing_credentials = []
+    for item in user.passkeys:
+        try:
+            existing_credentials.append(PublicKeyCredentialDescriptor(id=base64.urlsafe_b64decode(item["id"] + "==")))
+        except (KeyError, ValueError):
+            continue
 
     options = generate_registration_options(
         rp_id=_passkey_rp_id(),
@@ -106,7 +108,7 @@ def passkey_list():
 @login_required
 def passkey_delete(credential_id):
     user = db.session.get(User, current_user.id)
-    credentials = [item for item in user.passkeys if item["id"] != credential_id]
+    credentials = [item for item in user.passkeys if item.get("id") != credential_id]
     user.passkey_credentials = json.dumps(credentials)
     db.session.commit()
     return jsonify({"success": True})

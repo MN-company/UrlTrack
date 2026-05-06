@@ -88,6 +88,27 @@ def test_verify_email_backfills_same_canvas_hash(app, client, monkeypatch):
         assert updated_old.email == "ghost@example.com"
 
 
+def test_public_gate_invalid_visit_id_does_not_500(app, client, monkeypatch):
+    from server.routes import public as public_routes
+
+    monkeypatch.setattr(public_routes, "log_queue", _QueueRecorder())
+    _create_link(app, slug="bad-visit", require_email=True)
+
+    email_response = client.post(
+        "/verify_email",
+        data={"slug": "bad-visit", "visit_id": "not-an-int", "email": "valid@example.com"},
+        follow_redirects=False,
+    )
+    assert email_response.status_code == 302
+
+    password_response = client.post(
+        "/verify_password",
+        data={"slug": "bad-visit", "visit_id": "not-an-int", "password": "wrong"},
+        follow_redirects=False,
+    )
+    assert password_response.status_code == 401
+
+
 def test_redirect_geo_allowlist_fail_closed_marks_visit(app, client, monkeypatch):
     from server.models import Visit
     from server.routes import public as public_routes

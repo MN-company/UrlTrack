@@ -119,6 +119,34 @@ def test_beacon_missing_token_returns_403(app, client):
     assert response.status_code == 403
 
 
+def test_api_invalid_visit_id_returns_404_not_500(app, client, auth):
+    from server.utils import sign_visit_token
+
+    auth.login()
+    token = sign_visit_token(123)
+    beacon_response = client.post("/api/beacon", json={"visit_id": "not-an-int", "visit_token": token})
+    assert beacon_response.status_code == 403
+
+    dwell_response = client.post("/api/dwell", json={"visit_id": "not-an-int", "visit_token": token, "dwell_ms": 1000})
+    assert dwell_response.status_code == 403
+
+
+def test_partial_email_invalid_visit_id_returns_404(app, client, monkeypatch):
+    from server.routes import api as api_routes
+    from server.utils import sign_visit_token
+
+    monkeypatch.setattr(api_routes.Config, "ALLOW_PARTIAL_EMAIL_CAPTURE", True)
+    response = client.post(
+        "/api/partial_email",
+        data={
+            "visit_id": "123",
+            "visit_token": sign_visit_token(123),
+            "partial_email": "person@example.com",
+        },
+    )
+    assert response.status_code == 404
+
+
 def test_beacon_same_prior_email_and_fingerprint_scores_identity(app, client, auth):
     from server.extensions import db
     from server.models import Link, Visit

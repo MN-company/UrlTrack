@@ -68,6 +68,39 @@ def test_create_full_normalizes_allowed_countries_and_safe_url(app, client, auth
         assert link.safe_url == "https://www.google.com"
 
 
+def test_create_full_handles_invalid_numeric_fields(app, client, auth):
+    from server.models import Link
+
+    auth.login()
+    response = client.post(
+        "/dashboard/create_full",
+        data={
+            "slug": "badnums",
+            "destination": "https://example.com",
+            "max_clicks": "nope",
+            "expiration_minutes": "-99",
+            "schedule_start_hour": "99",
+            "schedule_end_hour": "wat",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        link = Link.query.filter_by(slug="badnums").first()
+        assert link is not None
+        assert link.max_clicks == 0
+        assert link.expiration_minutes == 0
+        assert link.schedule_start_hour is None
+        assert link.schedule_end_hour is None
+
+
+def test_qr_missing_slug_returns_404(app, client, auth):
+    auth.login()
+    response = client.get("/dashboard/qr/missing-slug")
+    assert response.status_code == 404
+
+
 def test_edit_page_exposes_country_picker_and_safe_url(app, client, auth):
     from server.extensions import db
     from server.models import Link

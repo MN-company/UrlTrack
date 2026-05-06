@@ -62,7 +62,12 @@ def global_timeline():
     query = sanitize(request.args.get("q"), 255)
     country = sanitize(request.args.get("country"), 64)
     device = sanitize(request.args.get("device"), 64)
-    days = int(sanitize(request.args.get("days"), 3) or 7)
+    try:
+        days = int(sanitize(request.args.get("days"), 3) or 7)
+    except ValueError:
+        days = 7
+    if days < 0:
+        days = 7
 
     visit_query = Visit.query
     if days > 0:

@@ -1,4 +1,5 @@
 import csv
+import html
 import json
 from io import StringIO
 
@@ -10,6 +11,17 @@ from ...models import Link, Visit
 
 
 bp = Blueprint("dashboard_exports", __name__)
+
+
+def _csv_safe(value) -> str:
+    text = "" if value is None else str(value)
+    if text[:1] in {"=", "+", "-", "@"}:
+        return f"'{text}"
+    return text
+
+
+def _html_safe(value) -> str:
+    return html.escape("" if value is None else str(value), quote=True)
 
 
 @bp.route("/export/<slug>/json")
@@ -68,20 +80,20 @@ def export_csv(slug):
             [
                 visit.id,
                 visit.timestamp.isoformat(),
-                visit.ip_address,
-                visit.hostname or "",
-                visit.isp or "",
-                visit.org or "",
-                visit.city or "",
-                visit.country or "",
-                visit.os_family or "",
-                visit.device_type or "",
-                visit.screen_res or "",
-                visit.email or "",
-                visit.canvas_hash or "",
-                visit.etag or "",
+                _csv_safe(visit.ip_address),
+                _csv_safe(visit.hostname),
+                _csv_safe(visit.isp),
+                _csv_safe(visit.org),
+                _csv_safe(visit.city),
+                _csv_safe(visit.country),
+                _csv_safe(visit.os_family),
+                _csv_safe(visit.device_type),
+                _csv_safe(visit.screen_res),
+                _csv_safe(visit.email),
+                _csv_safe(visit.canvas_hash),
+                _csv_safe(visit.etag),
                 "yes" if visit.is_suspicious else "no",
-                visit.referrer or "",
+                _csv_safe(visit.referrer),
             ]
         )
 
@@ -102,8 +114,8 @@ def export_pdf(slug):
         "<!DOCTYPE html><html><head><meta charset='utf-8'><title>UrlTrack Report</title>",
         "<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:8px;font-size:12px;text-align:left}th{background:#111;color:#fff}</style>",
         "</head><body>",
-        f"<h1>UrlTrack Report for /{link.slug}</h1>",
-        f"<p><strong>Destination:</strong> {link.destination}</p>",
+        f"<h1>UrlTrack Report for /{_html_safe(link.slug)}</h1>",
+        f"<p><strong>Destination:</strong> {_html_safe(link.destination)}</p>",
         f"<p><strong>Total visits:</strong> {Visit.query.filter_by(link_id=link.id).count()}</p>",
         "<table><thead><tr><th>Time</th><th>IP</th><th>Location</th><th>Device</th><th>Email</th></tr></thead><tbody>",
     ]
@@ -112,10 +124,10 @@ def export_pdf(slug):
         html.append(
             "<tr>"
             f"<td>{visit.timestamp:%Y-%m-%d %H:%M}</td>"
-            f"<td>{visit.ip_address or ''}</td>"
-            f"<td>{visit.city or ''}, {visit.country or ''}</td>"
-            f"<td>{visit.os_family or ''} / {visit.device_type or ''}</td>"
-            f"<td>{visit.email or ''}</td>"
+            f"<td>{_html_safe(visit.ip_address)}</td>"
+            f"<td>{_html_safe(visit.city)}, {_html_safe(visit.country)}</td>"
+            f"<td>{_html_safe(visit.os_family)} / {_html_safe(visit.device_type)}</td>"
+            f"<td>{_html_safe(visit.email)}</td>"
             "</tr>"
         )
 
