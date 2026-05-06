@@ -184,12 +184,17 @@ def _upsert_lead(app, visit: Visit) -> None:
         if visit.email:
             lead = Lead.query.filter_by(email=visit.email).first()
         if not lead and visit.canvas_hash:
-            lead = Lead.query.filter(Lead.all_canvas_hashes.contains(visit.canvas_hash)).first()
+            lead = Lead.query.filter(Lead.all_canvas_hashes.contains(f'"{visit.canvas_hash}"')).first()
             if not lead:
                 lead = Lead.query.filter_by(primary_canvas_hash=visit.canvas_hash).first()
 
         def _append(json_str, value):
-            lst = _json.loads(json_str) if json_str else []
+            try:
+                lst = _json.loads(json_str) if json_str else []
+            except (TypeError, ValueError):
+                lst = []
+            if not isinstance(lst, list):
+                lst = []
             if value and value not in lst:
                 lst.append(value)
             return _json.dumps(lst)

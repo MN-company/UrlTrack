@@ -33,6 +33,41 @@ def test_enrich_visit_upserts_lead(app, monkeypatch):
         assert lead.total_visits == 1
 
 
+def test_lead_upsert_does_not_match_canvas_substrings(app, monkeypatch):
+    from server import worker
+    from server.extensions import db
+    from server.models import Lead, Link, Visit
+    from server import utils as server_utils
+
+    monkeypatch.setattr(server_utils, "get_geo_data", lambda ip: {"proxy": False, "hosting": False, "mobile": False})
+    monkeypatch.setattr(server_utils, "get_reverse_dns", lambda ip: None)
+    monkeypatch.setattr(worker, "_dispatch_telegram", lambda app_obj, visit: None)
+
+    with app.app_context():
+        link = Link(slug="lead-substring", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        existing = Lead(
+            primary_canvas_hash="xabcx",
+            all_canvas_hashes='["xabcx"]',
+            total_visits=1,
+        )
+        visit = Visit(link_id=link.id, ip_address="1.1.1.1", canvas_hash="abc")
+        db.session.add_all([existing, visit])
+        db.session.commit()
+        visit_id = visit.id
+        existing_id = existing.id
+
+    worker._handle_task(app, {"type": "enrich_visit", "visit_id": visit_id, "ip": "1.1.1.1", "notify": False})
+
+    with app.app_context():
+        existing = db.session.get(Lead, existing_id)
+        created = Lead.query.filter_by(primary_canvas_hash="abc").first()
+        assert existing.total_visits == 1
+        assert created is not None
+        assert created.id != existing_id
+
+
 def test_leads_dashboard_detail_and_update(app, client, auth):
     from server.extensions import db
     from server.models import Lead
