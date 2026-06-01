@@ -1,0 +1,399 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TeamRole {
+  owner
+  admin
+  editor
+  analyst
+  viewer
+
+  @@map("team_role")
+}
+
+enum CampaignStatus {
+  draft
+  active
+  paused
+  completed
+  archived
+
+  @@map("campaign_status")
+}
+
+enum DomainType {
+  primary
+  branded
+  fallback
+
+  @@map("domain_type")
+}
+
+enum VerificationStatus {
+  pending
+  verified
+  failed
+
+  @@map("verification_status")
+}
+
+enum SslStatus {
+  pending
+  active
+  failed
+
+  @@map("ssl_status")
+}
+
+enum LinkStatus {
+  active
+  paused
+  archived
+
+  @@map("link_status")
+}
+
+enum SourceType {
+  link
+  qr
+
+  @@map("source_type")
+}
+
+enum WebhookDeliveryStatus {
+  pending
+  delivered
+  retrying
+  failed
+
+  @@map("webhook_delivery_status")
+}
+
+model Workspace {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  slug         String   @unique
+  ownerUserId  String   @map("owner_user_id")
+  settingsJson Json     @default("{}") @map("settings_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  members           TeamMember[]
+  campaigns         Campaign[]
+  domains           Domain[]
+  links             Link[]
+  visits            Visit[]
+  visitors          Visitor[]
+  leads             Lead[]
+  apiKeys           ApiKey[]
+  webhookEndpoints  WebhookEndpoint[]
+  webhookDeliveries WebhookDelivery[]
+  visitorSignals    VisitorSignal[]
+  notificationRules NotificationRule[]
+  aiInsights        AIInsight[]
+  auditLogs         AuditLog[]
+
+  @@map("workspaces")
+}
+
+model TeamMember {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  userId      String    @map("user_id")
+  role        TeamRole  @default(viewer)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model Campaign {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  name        String
+  description String?
+  status      CampaignStatus @default(draft)
+  goal        String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  links             Link[]
+  notificationRules NotificationRule[]
+  aiInsights        AIInsight[]
+
+  @@index([workspaceId, status])
+  @@map("campaigns")
+}
+
+model Domain {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId        String             @map("workspace_id") @db.Uuid
+  domain             String
+  type               DomainType         @default(branded)
+  verificationStatus VerificationStatus @default(pending) @map("verification_status")
+  sslStatus          SslStatus          @default(pending) @map("ssl_status")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  links     Link[]
+
+  @@unique([workspaceId, domain])
+  @@map("domains")
+}
+
+model Link {
+  id                     String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId            String     @map("workspace_id") @db.Uuid
+  campaignId             String?    @map("campaign_id") @db.Uuid
+  domainId               String?    @map("domain_id") @db.Uuid
+  slug                   String
+  destinationUrl         String     @map("destination_url")
+  accessControlConfig    Json       @default("{}") @map("access_control_config")
+  routingConfig          Json       @default("{}") @map("routing_config")
+  notificationConfig     Json       @default("{}") @map("notification_config")
+  qrConfig               Json       @default("{}") @map("qr_config")
+  flowConfig             Json       @default("{}") @map("flow_config")
+  status                 LinkStatus @default(active)
+  createdBy              String     @map("created_by")
+  clickCount             Int        @default(0) @map("click_count")
+  archivedAt             DateTime?  @map("archived_at")
+  createdAt              DateTime   @default(now()) @map("created_at")
+  updatedAt              DateTime   @updatedAt @map("updated_at")
+
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign          Campaign?          @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  domain            Domain?            @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  visits            Visit[]
+  notificationRules NotificationRule[]
+  aiInsights        AIInsight[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, status])
+  @@index([campaignId])
+  @@map("links")
+}
+
+model Visit {
+  id                      String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId             String     @map("workspace_id") @db.Uuid
+  linkId                  String     @map("link_id") @db.Uuid
+  visitorId               String?    @map("visitor_id") @db.Uuid
+  sourceType              SourceType @default(link) @map("source_type")
+  trafficQualityScore     Int        @default(100) @map("traffic_quality_score")
+  identityConfidenceScore Int        @default(0) @map("identity_confidence_score")
+  eventType               String     @default("visit.created") @map("event_type")
+  rawFingerprintJson      Json       @default("{}") @map("raw_fingerprint_json")
+  ip                      String?    @map("ip")
+  userAgent               String?    @map("user_agent")
+  referrer                String?
+  countryCode             String?    @map("country_code")
+  deviceType              String?    @map("device_type")
+  isVpn                   Boolean    @default(false) @map("is_vpn")
+  isBot                   Boolean    @default(false) @map("is_bot")
+  isDatacenter            Boolean    @default(false) @map("is_datacenter")
+  visitTokenHash          String?    @unique @map("visit_token_hash")
+  matchReasons            String[]   @default([]) @map("match_reasons")
+  reviewSuggested         Boolean    @default(false) @map("review_suggested")
+  createdAt               DateTime   @default(now()) @map("created_at")
+  updatedAt               DateTime   @updatedAt @map("updated_at")
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  link      Link            @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  visitor   Visitor?        @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+  signals   VisitorSignal[]
+
+  @@index([workspaceId, createdAt])
+  @@index([linkId, createdAt])
+  @@index([visitorId])
+  @@map("visits")
+}
+
+model Visitor {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId           String    @map("workspace_id") @db.Uuid
+  primaryEmail          String?   @map("primary_email")
+  primaryIp             String?   @map("primary_ip")
+  primaryCanvasHash     String?   @map("primary_canvas_hash")
+  primaryFingerprintHash String?  @map("primary_fingerprint_hash")
+  firstSeen             DateTime  @default(now()) @map("first_seen")
+  lastSeen              DateTime  @default(now()) @map("last_seen")
+  totalVisits           Int       @default(0) @map("total_visits")
+  confidenceScore       Int       @default(0) @map("confidence_score")
+  trafficQualityAverage Int       @default(100) @map("traffic_quality_average")
+  attributesJson        Json      @default("{}") @map("attributes_json")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  visits    Visit[]
+  signals   VisitorSignal[]
+  leads     Lead[]
+
+  @@index([workspaceId, primaryEmail])
+  @@index([workspaceId, primaryFingerprintHash])
+  @@map("visitors")
+}
+
+model VisitorSignal {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  visitorId        String   @map("visitor_id") @db.Uuid
+  visitId          String?  @map("visit_id") @db.Uuid
+  signalType       String   @map("signal_type")
+  signalValueHash  String   @map("signal_value_hash")
+  confidenceWeight Int      @map("confidence_weight")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  visitor Visitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  visit   Visit?   @relation(fields: [visitId], references: [id], onDelete: SetNull)
+
+  @@unique([visitorId, signalType, signalValueHash])
+  @@index([workspaceId, signalType])
+  @@index([signalType, signalValueHash])
+  @@map("visitor_signals")
+}
+
+model Lead {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  visitorId         String?  @map("visitor_id") @db.Uuid
+  score             Int      @default(0)
+  confidenceScore   Int      @default(0) @map("confidence_score")
+  tags              String[] @default([])
+  lifecycleStage    String   @default("new") @map("lifecycle_stage")
+  consentStatus     String   @default("unknown") @map("consent_status")
+  customFieldsJson  Json     @default("{}") @map("custom_fields_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  visitor   Visitor?  @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, score])
+  @@map("leads")
+}
+
+model ApiKey {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  keyHash     String    @unique @map("key_hash")
+  name        String
+  scopes      String[]  @default([])
+  lastUsedAt  DateTime? @map("last_used_at")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("api_keys")
+}
+
+model WebhookEndpoint {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  url         String
+  secret      String
+  name        String
+  enabled     Boolean  @default(true)
+  events      String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([workspaceId, enabled])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String                @map("workspace_id") @db.Uuid
+  endpointId   String                @map("endpoint_id") @db.Uuid
+  eventType    String                @map("event_type")
+  payloadJson  Json                  @map("payload_json")
+  status       WebhookDeliveryStatus @default(pending)
+  responseCode Int?                  @map("response_code")
+  attempts     Int                   @default(0)
+  nextRetryAt  DateTime?             @map("next_retry_at")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([endpointId, status])
+  @@index([nextRetryAt])
+  @@map("webhook_deliveries")
+}
+
+model NotificationRule {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  campaignId      String?  @map("campaign_id") @db.Uuid
+  linkId          String?  @map("link_id") @db.Uuid
+  eventType       String   @map("event_type")
+  channel         String
+  thresholdConfig Json     @default("{}") @map("threshold_config")
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  link      Link?     @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, eventType])
+  @@map("notification_rules")
+}
+
+model AIInsight {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  campaignId   String?  @map("campaign_id") @db.Uuid
+  linkId       String?  @map("link_id") @db.Uuid
+  insightType  String   @map("insight_type")
+  title        String
+  summary      String
+  severity     String   @default("info")
+  metadataJson Json     @default("{}") @map("metadata_json")
+  dismissedAt  DateTime? @map("dismissed_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  link      Link?     @relation(fields: [linkId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, severity])
+  @@map("ai_insights")
+}
+
+model AuditLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  userId       String?  @map("user_id")
+  action       String
+  entityType   String   @map("entity_type")
+  entityId     String?  @map("entity_id")
+  metadataJson Json     @default("{}") @map("metadata_json")
+  ip           String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("audit_logs")
+}
