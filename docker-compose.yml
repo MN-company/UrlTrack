@@ -1,11 +1,44 @@
 services:
-  ulrtrack:
-    build: .
-    ports:
-      - "8000:8000"
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     env_file:
       - .env
     environment:
-      DATABASE_URL: sqlite:////app/server/data/ulrtrack.db
-    volumes:
-      - ./server/data:/app/server/data
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  worker:
+    build:
+      context: .
+      dockerfile: packages/worker/Dockerfile
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"

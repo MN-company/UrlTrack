@@ -1,284 +1,84 @@
-# UrlTrack
+# UrlTrack V2
 
-UrlTrack is a self-hosted link tracking platform built with Flask. It sits between a public link and its destination, giving you full control over who can access it and deep visibility into what happens after the click.
+UrlTrack V2 is a self-hosted link intelligence platform for marketing teams that need fast redirects, visitor identification, identity graphs, flow-based link rules, webhook automation, and dashboard analytics.
 
-Unlike traditional link shorteners, UrlTrack focuses on context: it helps you understand who is interacting with your links, how, and why.
+This branch introduces the TypeScript monorepo requested for V2:
 
-It is designed for controlled campaigns, demos, internal investigations, and analytical use cases where standard shorteners and basic trackers fall short.
+- `apps/api` - Fastify public API, redirect engine, ThumbmarkJS bounce page, OpenAPI docs at `/api/docs`
+- `apps/dashboard` - Next.js App Router dashboard with Supabase Auth surfaces and React Flow link builder
+- `packages/db` - Prisma schema and Supabase Postgres RLS migration
+- `packages/worker` - BullMQ queues, identity matching, webhook signing and retry utilities
+- `packages/shared` - shared validation, types and scoring defaults
 
-## What UrlTrack does
-
-At its core, UrlTrack sits between a public link and its destination.
-
-A key design choice is the built-in anti-bot and anti-crawler system on both the domain and generated links. This makes the platform resistant to URL expanders and similar automated tools: UrlTrack can return a valid HTTP 200 response without ever exposing or resolving the real destination URL, effectively feeding false or empty information to automated systems.
-
-In practice, this means the final destination remains hidden from many automated inspection tools while still allowing the link to behave normally for intended visitors.
-
-## Anti-bot comparison
-
-### UrlTrack behavior (HTTP 200, destination hidden)
-![codice 200](our.png)
-
-### Comparison with standard tools (final URL exposed)
-![rivelano url finale](others.png)
-
-## Main features
-
-You can protect a link with:
-
-- captcha
-- password
-- email capture
-- country allowlist
-- VPN blocking
-- consent gate
-- schedule windows
-
-After the visitor passes those checks, UrlTrack records the visit and enriches it in the background. From the dashboard you can inspect individual campaigns, trace repeated visitors across links, view device profiles, and monitor leads that emerge from repeated visits.
-
-Depending on configuration, tracking data can include:
-
-- country and geolocation
-- device and browser details
-- fingerprint signals
-- dwell time
-- email capture
-- VPN hints
-- cross-visit correlations
-
-## Why this project exists
-
-Many URL shorteners hide useful statistics behind paid plans and often do not offer the level of flexibility or customization that advanced users need.
-
-UrlTrack was created to address that gap: a self-hosted solution with deep tracking, strong customization potential, and room for further expansion.
-
-It aims to provide a level of control and analytical depth comparable to platforms such as IPLogger or Grabify, while remaining fully customizable and under your own infrastructure.
-
-## Quick start
-
-If you want the least-friction local setup:
+## Local Setup
 
 ```bash
 git clone https://github.com/MN-company/UrlTrack.git
 cd UrlTrack
-./install.sh --run
+cp .env.example .env
+corepack enable
+pnpm install
+pnpm db:migrate
+pnpm dev
 ```
 
-That command will:
+Open:
 
-- create `.env` if missing
-- generate a strong `SECRET_KEY`
-- create `venv/`
-- install Python dependencies
-- run database migrations
-- start the local server
+- Dashboard: `http://localhost:3000`
+- API: `http://localhost:8000/health`
+- OpenAPI docs: `http://localhost:8000/api/docs`
 
-Then open:
-
-- `http://127.0.0.1:8000/`
-- first boot will send you to `http://127.0.0.1:8000/setup`
-
-## Docker mode
-
-If you prefer to run UrlTrack with Docker instead of a local Python environment:
+## Docker
 
 ```bash
-./install.sh --docker --run
-```
-
-That mode prepares `.env`, keeps SQLite data in `server/data/`, and starts the stack with `docker compose up --build`.
-
-If you want Docker without starting immediately:
-
-```bash
-./install.sh --docker
+cp .env.example .env
 docker compose up --build
 ```
 
-The container runs Alembic migrations on boot and then starts Gunicorn on port `8000`.
+The compose stack starts `api`, `dashboard`, `worker`, and `redis`. Postgres is intentionally not included because UrlTrack V2 uses Supabase Postgres.
 
-## Manual setup
+## Required Environment
 
-If you do not want the installer flow:
+```env
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+DATABASE_URL=
+REDIS_URL=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_API_URL=
+BASE_DOMAIN=
+VISIT_TOKEN_SECRET=
+```
+
+## Validation
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r server/requirements.txt
-cp .env.example .env
-SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
-./run.sh
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
-At minimum, `.env` should contain:
+## API Shape
 
-```env
-SECRET_KEY=replace-me
-SERVER_URL=http://127.0.0.1:8000
-DATABASE_URL=sqlite:///data/urltrack.db
+Public API responses follow:
+
+```json
+{ "data": {}, "meta": { "page": 1, "per_page": 20, "total": 150 } }
 ```
 
-## First run
+Authentication accepts either `X-Api-Key` or a Supabase Bearer token plus `X-Workspace-Id`.
 
-On a clean database:
+The redirect endpoint `GET /:slug` keeps redirect-side work minimal: it evaluates synchronous access rules, records a visit, serves a tiny ThumbmarkJS bounce page, and queues enrichment work through BullMQ.
 
-1. open `/setup`
-2. create first admin account
-3. save the one-time admin secret shown after setup
-4. sign in to dashboard
-5. optionally enable TOTP or passkeys from security settings
+## Webhooks
 
-That one-time admin secret is only for future admin creation. It is not part of normal login.
-
-## Main areas of the dashboard
-
-### Home
-
-Campaign summary, recent links, recent visits, and fast access to common actions.
-
-### Campaigns
-
-Per-link analytics page with visit charts, referrers, countries, engagement metrics, and a visit log.
-
-### Graph
-
-A visual graph connecting `canvas_hash`, visited slugs, and known emails.
-
-### Leads
-
-A lightweight lead view that groups repeated visits by fingerprint or email so you can inspect history in one place.
-
-### AI Analyst
-
-An assistant view that can reason over visits and search context using commands like `@visit:`, `@hash:`, `@link:`, `@ip:`, and `@email:`.
-
-### Settings
-
-Manage runtime values, domain lists, Telegram credentials, AI model settings, and other operational toggles.
-
-## Optional integrations
-
-None of these are mandatory for basic tracking.
-
-### Gemini
-
-Used by AI Analyst.
-
-Add to `.env`:
-
-```env
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash
-```
-
-If `GEMINI_API_KEY` is empty, AI features stay visible but generation is effectively disabled.
-
-### Telegram
-
-Used for visit notifications and digests.
-
-1. create a bot with `@BotFather`
-2. send at least one message to the bot
-3. call:
+Outbound webhooks are signed with HMAC-SHA256:
 
 ```text
-https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+X-UrlTrack-Signature: sha256=<hash>
 ```
 
-4. copy the chat id into `.env`
-
-```env
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-```
-
-### Cloudflare Turnstile
-
-Used only if you enable captcha gate on links.
-
-```env
-TURNSTILE_SITE_KEY=
-TURNSTILE_SECRET_KEY=
-```
-
-### is.gd
-
-Optional masking for public links when `MASK_WITH_ISGD=true`. No API key required.
-
-## Docker, Fly.io, Linux deploy
-
-This repo includes deploy assets for a few different styles:
-
-- `Dockerfile`
-- `docker-compose.yml`
-- `fly.toml`
-- `deploy/nginx/ulrtrack.conf`
-- `deploy/systemd/ulrtrack.service`
-- `deploy/fail2ban/...`
-
-For Fly.io, `fly.toml` is already configured for auto-start and auto-stop machines. For plain Linux, use the systemd and nginx files in `deploy/` as starting points, not as magic one-click infrastructure.
-
-## Useful commands
-
-Run migrations:
-
-```bash
-SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
-```
-
-Create another admin from CLI:
-
-```bash
-python -m server.create_admin
-```
-
-Run local server with repo interpreter:
-
-```bash
-./venv/bin/python -m flask --app server:create_app run --host=127.0.0.1 --port=8000
-```
-
-## Repo structure
-
-- `server/` Flask app, routes, models, worker, templates, static assets
-- `migrations/` Alembic revisions
-- `deploy/` nginx, fail2ban, systemd, helper scripts
-- `tests/` pytest suite
-
-## Troubleshooting
-
-### Root returns 404 or wrong app boots
-
-Usually this means the wrong interpreter is being used or a stale process is still running. Use the repo venv explicitly:
-
-```bash
-pkill -f "flask --app server:create_app run" || true
-./venv/bin/python -m flask --app server:create_app run --host=127.0.0.1 --port=8000
-```
-
-### `flask db` says command not found
-
-Use the repo interpreter, not a global `flask` command:
-
-```bash
-./venv/bin/python -m flask --app server:create_app db upgrade
-```
-
-### Telegram alerts do not arrive
-
-Check the bot token, chat id, and whether the bot has received at least one message from the target chat.
-
-### Docker starts but shows warning from `requests`
-
-If the app still migrates and Gunicorn comes up, that warning is noisy but not fatal. Check:
-
-```bash
-docker compose ps
-docker compose logs --tail=200
-```
-
-## Final note
-
-UrlTrack should be considered software for educational purposes.
-
-It is not intended to identify any individual. The creator disclaims any responsibility connected to the proper or improper use of this tool.
+Retry timing is `30s`, `5min`, `30min`, `2h`, and `24h`. After the fifth failed attempt, the delivery is marked failed and the endpoint can be disabled by the worker.
