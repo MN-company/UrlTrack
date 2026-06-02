@@ -52,6 +52,7 @@ class Link(DatabaseModel):
     allowed_countries: Mapped[Optional[str]] = mapped_column(String(50))
 
     public_masked_url: Mapped[Optional[str]] = mapped_column(String(512))
+    qr_config: Mapped[Optional[str]] = mapped_column(Text)
     require_email: Mapped[bool] = mapped_column(Boolean, default=False)
     email_policy: Mapped[str] = mapped_column(String(20), default="all")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

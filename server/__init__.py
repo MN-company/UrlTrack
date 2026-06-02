@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from flask import Flask, redirect, request, url_for
@@ -91,6 +92,16 @@ def create_app() -> Flask:
             return markdown.markdown(text)
         except ImportError:
             return text.replace("\n", "<br>")
+
+    @app.template_filter("fromjson")
+    def fromjson(value, default=None):
+        if not value:
+            return default or {}
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return default or {}
+        return parsed if parsed is not None else default or {}
 
     @app.before_request
     def enforce_first_run_setup():

@@ -1,21 +1,24 @@
-import io
+import os
+import uuid as uuid_lib
 from pathlib import Path
 
-import segno
 from dotenv import set_key
 from flask import Blueprint, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy import distinct, func
+from werkzeug.utils import secure_filename
 
 from ...config import BASE_DIR, Config
 from ...extensions import cache, db
 from ...models import Link, Visit
+from ...services.qr_service import generate_qr_png, generate_qr_svg, parse_config
 from ...utils import invalidate_domain_cache, sanitize, shorten_with_isgd
 from ...validators import normalize_destination_url, normalize_optional_url, parse_bool, validate_slug
 
 
 bp = Blueprint("dashboard_links", __name__)
 SAFE_URL_DEFAULT = "https://www.google.com"
+UPLOAD_FOLDER_NAME = "qr_logos"
 
 
 def _mask_url_for_link(slug: str) -> str | None:
@@ -37,6 +40,18 @@ def _set_runtime_value(key: str, value):
 def _public_link_url(slug: str) -> str:
     base_url = current_app.config.get("SERVER_URL", "").rstrip("/")
     return f"{base_url}/{slug}" if base_url else f"/{slug}"
+
+
+def _qr_upload_dir() -> Path:
+    upload_dir = Path(current_app.root_path) / "data" / UPLOAD_FOLDER_NAME
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return upload_dir
+
+
+def _public_link_url_for_qr(link: Link) -> str:
+    if link.public_masked_url:
+        return link.public_masked_url
+    return _public_link_url(link.slug)
 
 
 def _coerce_int(value, default=0, minimum=None, maximum=None):
@@ -257,23 +272,93 @@ def edit_link(slug: str):
 @bp.route("/qr/<slug>")
 @login_required
 def qr_code(slug: str):
-    Link.query.filter_by(slug=slug).first_or_404()
-    full_url = _public_link_url(slug)
-    qr = segno.make(full_url)
-    buffer = io.BytesIO()
-    qr.save(buffer, kind="png", scale=10)
-    buffer.seek(0)
+    link = Link.query.filter_by(slug=slug).first_or_404()
+    config = parse_config(link.qr_config)
+    scale = min(_coerce_int(request.args.get("scale"), default=10, minimum=1, maximum=20), 20)
+    fmt = sanitize(request.args.get("format"), 10).lower() or "png"
 
-    response = make_response(buffer.getvalue())
+    for key in (
+        "fg_color",
+        "bg_color",
+        "gradient_color",
+        "gradient_direction",
+        "error_correction",
+        "dot_style",
+        "transparent_bg",
+    ):
+        val = request.args.get(key)
+        if val:
+            config[key] = val.lower() in {"1", "true", "yes", "on"} if key == "transparent_bg" else val
+
+    url = _public_link_url_for_qr(link)
+    if fmt == "svg":
+        svg_data = generate_qr_svg(url, config, scale=scale)
+        response = make_response(svg_data)
+        response.headers["Content-Type"] = "image/svg+xml"
+        response.headers["Content-Disposition"] = f"inline; filename=qr_{slug}.svg"
+        return response
+
+    png_data = generate_qr_png(url, config, scale=scale)
+    response = make_response(png_data)
     response.headers["Content-Type"] = "image/png"
-    response.headers["Content-Disposition"] = f"inline; filename={slug}_qr.png"
+    response.headers["Content-Disposition"] = f"inline; filename=qr_{slug}.png"
     return response
 
 
 @bp.route("/qr_view/<slug>")
 @login_required
 def qr_view(slug: str):
-    return render_template("qr_view.html", link=Link.query.filter_by(slug=slug).first_or_404())
+    link = Link.query.filter_by(slug=slug).first_or_404()
+    return render_template("qr_view.html", link=link, qr_config=parse_config(link.qr_config))
+
+
+@bp.route("/qr_save/<slug>", methods=["POST"])
+@login_required
+def qr_save(slug: str):
+    link = Link.query.filter_by(slug=slug).first_or_404()
+    config = parse_config(link.qr_config)
+
+    for key in ("fg_color", "bg_color", "gradient_direction", "error_correction", "dot_style"):
+        val = request.form.get(key, "").strip()
+        if val:
+            config[key] = val
+
+    gradient_enabled = "enable_gradient" in request.form
+    gradient_color = request.form.get("gradient_color", "").strip()
+    config["gradient_color"] = gradient_color if gradient_enabled and gradient_color else None
+    config["transparent_bg"] = "transparent_bg" in request.form
+
+    logo_file = request.files.get("logo_file")
+    if logo_file and logo_file.filename:
+        ext = Path(secure_filename(logo_file.filename)).suffix.lower()
+        if ext not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+            flash("Logo must be PNG, JPG, WEBP or SVG.", "error")
+            return redirect(url_for("dashboard.dashboard_links.qr_view", slug=slug))
+        fname = f"{slug}_{uuid_lib.uuid4().hex[:8]}{ext}"
+        save_path = _qr_upload_dir() / fname
+        logo_file.save(str(save_path))
+        if config.get("logo_path") and Path(config["logo_path"]).exists():
+            try:
+                os.remove(config["logo_path"])
+            except OSError:
+                pass
+        config["logo_path"] = str(save_path)
+        config["error_correction"] = "H"
+
+    if request.form.get("remove_logo") == "1":
+        if config.get("logo_path") and Path(config["logo_path"]).exists():
+            try:
+                os.remove(config["logo_path"])
+            except OSError:
+                pass
+        config["logo_path"] = None
+
+    import json as _json
+
+    link.qr_config = _json.dumps(parse_config(_json.dumps(config)), sort_keys=True)
+    db.session.commit()
+    flash("QR configuration saved.", "success")
+    return redirect(url_for("dashboard.dashboard_links.qr_view", slug=slug))
 
 
 @bp.route("/settings", methods=["GET", "POST"])
