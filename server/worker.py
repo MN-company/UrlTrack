@@ -38,6 +38,8 @@ def _build_visit_payload(visit: Visit) -> dict:
         "city": visit.city,
         "email": visit.email,
         "canvas_hash": visit.canvas_hash,
+        "thumbmark_hash": visit.thumbmark_hash,
+        "visitor_id": visit.visitor_id,
         "etag": visit.etag,
         "is_vpn": visit.is_vpn,
         "is_suspicious": visit.is_suspicious,
@@ -487,6 +489,7 @@ def _handle_task(app, task):
                     visit,
                     missing_beacon=not bool(visit.beacon_received_at),
                     secret=app.config.get("FINGERPRINT_SECRET"),
+                    use_thumbmark_api=bool(task.get("thumbmark_api", True)),
                 )
                 db.session.commit()
                 _upsert_lead(app, visit)

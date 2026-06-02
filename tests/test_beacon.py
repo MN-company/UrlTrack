@@ -119,6 +119,101 @@ def test_beacon_missing_token_returns_403(app, client):
     assert response.status_code == 403
 
 
+def test_thumbmark_fp_endpoint_stores_payload_and_enqueues(app, client, monkeypatch):
+    from server.extensions import db
+    from server.models import Visit
+    from server.routes import public as public_routes
+    from server.utils import sign_visit_token
+
+    class QueueRecorder:
+        def __init__(self):
+            self.items = []
+
+        def put(self, item):
+            self.items.append(item)
+
+    queue = QueueRecorder()
+    monkeypatch.setattr(public_routes, "log_queue", queue)
+    visit_id = _create_visit(app)
+    token = sign_visit_token(visit_id)
+
+    response = client.post(
+        "/fp",
+        json={
+            "visit_id": visit_id,
+            "visit_token": token,
+            "thumbmark_hash": "tm-hash-1",
+            "thumbmark_raw": '{"thumbmark":"tm-hash-1","components":{}}',
+            "fp_canvas_hash": "canvas-tm",
+            "fp_audio_hash": "audio-tm",
+            "fp_webgl_hash": "webgl-tm",
+            "fp_screen_profile": "1920x1080x24@2",
+            "fp_hardware_profile": "8c/16gb/0tp",
+            "fp_languages": "it-IT,en-US",
+            "fp_timezone": "Europe/Rome",
+        },
+    )
+
+    assert response.status_code == 204
+    assert queue.items == [{"type": "enrich_visit", "visit_id": visit_id, "notify": False, "thumbmark_api": True}]
+
+    with app.app_context():
+        stored = db.session.get(Visit, visit_id)
+        assert stored.thumbmark_hash == "tm-hash-1"
+        assert stored.fp_canvas_hash == "canvas-tm"
+        assert stored.canvas_hash == "canvas-tm"
+        assert stored.audio_fp == "audio-tm"
+        assert stored.screen_res == "1920x1080"
+        assert stored.pixel_ratio == 2.0
+        assert stored.cpu_cores == 8
+        assert stored.ram_gb == 16
+        assert stored.beacon_received_at is not None
+
+
+def test_thumbmark_signals_match_same_visitor(app):
+    from server.extensions import db
+    from server.models import Link, Visit, VisitorSignal
+    from server.services.scoring import apply_visit_scoring
+
+    with app.app_context():
+        link = Link(slug="thumbmark-match", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        first = Visit(
+            link_id=link.id,
+            ip_address="1.1.1.1",
+            thumbmark_hash="shared-thumbmark",
+            fp_canvas_hash="shared-canvas",
+            fp_audio_hash="shared-audio",
+            fp_webgl_hash="shared-webgl",
+        )
+        second = Visit(
+            link_id=link.id,
+            ip_address="1.1.1.2",
+            thumbmark_hash="shared-thumbmark",
+            fp_canvas_hash="shared-canvas",
+            fp_audio_hash="shared-audio",
+            fp_webgl_hash="shared-webgl",
+        )
+        db.session.add_all([first, second])
+        db.session.commit()
+
+        apply_visit_scoring(first)
+        apply_visit_scoring(second)
+        db.session.commit()
+
+        assert first.visitor_id
+        assert second.visitor_id == first.visitor_id
+        assert second.identity_confidence >= 60
+        signal = VisitorSignal.query.filter_by(
+            visitor_id=first.visitor_id,
+            signal_type="thumbmark_hash",
+            signal_value="shared-thumbmark",
+        ).first()
+        assert signal is not None
+        assert signal.occurrence_count == 2
+
+
 def test_api_invalid_visit_id_returns_404_not_500(app, client, auth):
     from server.utils import sign_visit_token
 

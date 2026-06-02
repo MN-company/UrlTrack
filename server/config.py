@@ -56,6 +56,8 @@ class Config:
     WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "")
     TURNSTILE_SITE_KEY: str = os.getenv("TURNSTILE_SITE_KEY", "")
     TURNSTILE_SECRET_KEY: str = os.getenv("TURNSTILE_SECRET_KEY", "")
+    THUMBMARK_API_KEY: str = os.getenv("THUMBMARK_API_KEY", "")
+    THUMBMARK_API_URL: str = os.getenv("THUMBMARK_API_URL", "https://api.thumbmarkjs.com/thumbmark")
     TRUST_PROXY_HEADERS: bool = _bool_env("TRUST_PROXY_HEADERS", False)
     ANONYMIZE_IP: bool = _bool_env("ANONYMIZE_IP", True)
     REQUIRE_CONSENT: bool = _bool_env("REQUIRE_CONSENT", False)
@@ -89,6 +91,7 @@ class Config:
             "logout",
             "setup",
             "api",
+            "fp",
             "static",
             "verify_captcha",
             "verify_password",
@@ -127,6 +130,8 @@ class Config:
             "GEMINI_MODEL": config.GEMINI_MODEL,
             "TURNSTILE_SITE_KEY": config.TURNSTILE_SITE_KEY,
             "TURNSTILE_SECRET_KEY": config.TURNSTILE_SECRET_KEY,
+            "THUMBMARK_API_KEY": config.THUMBMARK_API_KEY,
+            "THUMBMARK_API_URL": config.THUMBMARK_API_URL,
             "TRUST_PROXY_HEADERS": config.TRUST_PROXY_HEADERS,
             "ANONYMIZE_IP": config.ANONYMIZE_IP,
             "VISIT_RETENTION_DAYS": config.VISIT_RETENTION_DAYS,

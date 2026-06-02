@@ -1,9 +1,10 @@
 import json
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from flask_login import UserMixin
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .extensions import db
@@ -71,10 +72,15 @@ class Visit(DatabaseModel):
         Index("ix_visit_email", "email"),
         Index("ix_visit_etag", "etag"),
         Index("ix_visit_fingerprint_composite_v1", "fingerprint_composite_v1"),
+        Index("ix_visit_thumbmark_hash", "thumbmark_hash"),
+        Index("ix_visit_thumbmark_visitor_id", "thumbmark_visitor_id"),
+        Index("ix_visit_visitor_id", "visitor_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     link_id: Mapped[int] = mapped_column(ForeignKey("link.id"), nullable=False)
+    visitor_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("visitor.id", ondelete="SET NULL"))
+    probable_visitor_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("visitor.id", ondelete="SET NULL"))
 
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))
@@ -145,12 +151,94 @@ class Visit(DatabaseModel):
     detected_sessions: Mapped[Optional[str]] = mapped_column(Text)
     visit_complete: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    thumbmark_hash: Mapped[Optional[str]] = mapped_column(Text)
+    thumbmark_raw: Mapped[Optional[str]] = mapped_column(Text)
+    thumbmark_visitor_id: Mapped[Optional[str]] = mapped_column(Text)
+    thumbmark_api_confidence: Mapped[Optional[float]] = mapped_column(Float)
+    thumbmark_api_called: Mapped[bool] = mapped_column(Boolean, default=False)
+    thumbmark_api_error: Mapped[Optional[str]] = mapped_column(Text)
+    fp_audio_hash: Mapped[Optional[str]] = mapped_column(Text)
+    fp_canvas_hash: Mapped[Optional[str]] = mapped_column(Text)
+    fp_webgl_vendor: Mapped[Optional[str]] = mapped_column(Text)
+    fp_webgl_hash: Mapped[Optional[str]] = mapped_column(Text)
+    fp_fonts_hash: Mapped[Optional[str]] = mapped_column(Text)
+    fp_screen_profile: Mapped[Optional[str]] = mapped_column(Text)
+    fp_hardware_profile: Mapped[Optional[str]] = mapped_column(Text)
+    fp_languages: Mapped[Optional[str]] = mapped_column(Text)
+    fp_timezone: Mapped[Optional[str]] = mapped_column(Text)
+    fp_speech_hash: Mapped[Optional[str]] = mapped_column(Text)
+    fp_math_hash: Mapped[Optional[str]] = mapped_column(Text)
+    fp_permissions_profile: Mapped[Optional[str]] = mapped_column(Text)
+    fp_media_devices: Mapped[Optional[str]] = mapped_column(Text)
+    fp_webrtc_ips: Mapped[Optional[str]] = mapped_column(Text)
+
     is_vpn: Mapped[bool] = mapped_column(Boolean, default=False)
     is_proxy: Mapped[bool] = mapped_column(Boolean, default=False)
     is_hosting: Mapped[bool] = mapped_column(Boolean, default=False)
     is_mobile: Mapped[bool] = mapped_column(Boolean, default=False)
 
     link: Mapped["Link"] = relationship(back_populates="visits")
+    visitor: Mapped[Optional["Visitor"]] = relationship(
+        "Visitor",
+        foreign_keys=[visitor_id],
+        back_populates="visits",
+    )
+    probable_visitor: Mapped[Optional["Visitor"]] = relationship(
+        "Visitor",
+        foreign_keys=[probable_visitor_id],
+    )
+
+
+class Visitor(DatabaseModel):
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    first_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    probable_match_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("visitor.id", ondelete="SET NULL"))
+
+    primary_thumbmark_hash: Mapped[Optional[str]] = mapped_column(Text)
+    primary_thumbmark_visitor_id: Mapped[Optional[str]] = mapped_column(Text)
+    known_canvas_hashes: Mapped[Optional[str]] = mapped_column(Text)
+    known_audio_hashes: Mapped[Optional[str]] = mapped_column(Text)
+    known_webgl_vendors: Mapped[Optional[str]] = mapped_column(Text)
+    known_screen_profiles: Mapped[Optional[str]] = mapped_column(Text)
+    known_timezones: Mapped[Optional[str]] = mapped_column(Text)
+    known_languages: Mapped[Optional[str]] = mapped_column(Text)
+    known_thumbmark_visitor_ids: Mapped[Optional[str]] = mapped_column(Text)
+    thumbmark_api_calls_count: Mapped[int] = mapped_column(Integer, default=0)
+    thumbmark_api_confidence_avg: Mapped[Optional[float]] = mapped_column(Float)
+
+    visits: Mapped[List["Visit"]] = relationship(
+        "Visit",
+        foreign_keys=[Visit.visitor_id],
+        back_populates="visitor",
+    )
+    signals: Mapped[List["VisitorSignal"]] = relationship(
+        "VisitorSignal",
+        back_populates="visitor",
+        cascade="all, delete-orphan",
+    )
+
+
+class VisitorSignal(DatabaseModel):
+    __table_args__ = (
+        UniqueConstraint("visitor_id", "signal_type", "signal_value", name="uq_visitor_signal_value"),
+        Index("idx_visitor_signal_visitor", "visitor_id"),
+        Index("idx_visitor_signal_type_value", "signal_type", "signal_value"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    visitor_id: Mapped[str] = mapped_column(String(36), ForeignKey("visitor.id", ondelete="CASCADE"), nullable=False)
+    visit_id: Mapped[Optional[int]] = mapped_column(ForeignKey("visit.id", ondelete="SET NULL"))
+    signal_type: Mapped[str] = mapped_column(Text, nullable=False)
+    signal_value: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence_weight: Mapped[int] = mapped_column(Integer, nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    visitor: Mapped["Visitor"] = relationship("Visitor", back_populates="signals")
 
 
 class Lead(DatabaseModel):
