@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from .extensions import db, log_queue
 from .models import Link, Visit
@@ -60,7 +60,7 @@ def _fire_webhook(webhook_url: str, webhook_secret: str, visit_payload: dict) ->
         headers = {"Content-Type": "application/json"}
         if webhook_secret:
             signature = hmac.new(webhook_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-            headers["X-UlrTrack-Signature"] = signature
+            headers["X-UrlTrack-Signature"] = signature
         requests.post(webhook_url, data=body, headers=headers, timeout=5)
     except Exception as exc:
         print(f"Webhook delivery error: {exc}")
@@ -183,12 +183,39 @@ def _upsert_lead(app, visit: Visit) -> None:
 
     try:
         lead = None
+
+        def _lead_by_canvas(canvas_hash):
+            if not canvas_hash:
+                return None
+            lead_match = Lead.query.filter(Lead.all_canvas_hashes.contains(f'"{canvas_hash}"')).first()
+            if lead_match:
+                return lead_match
+            return Lead.query.filter_by(primary_canvas_hash=canvas_hash).first()
+
         if visit.email:
             lead = Lead.query.filter_by(email=visit.email).first()
-        if not lead and visit.canvas_hash:
-            lead = Lead.query.filter(Lead.all_canvas_hashes.contains(f'"{visit.canvas_hash}"')).first()
-            if not lead:
-                lead = Lead.query.filter_by(primary_canvas_hash=visit.canvas_hash).first()
+        if not lead:
+            lead = _lead_by_canvas(visit.canvas_hash)
+        if not lead and (visit.visitor_id or visit.thumbmark_visitor_id):
+            identity_filters = []
+            if visit.visitor_id:
+                identity_filters.append(Visit.visitor_id == visit.visitor_id)
+            if visit.thumbmark_visitor_id:
+                identity_filters.append(Visit.thumbmark_visitor_id == visit.thumbmark_visitor_id)
+            related_visits = (
+                Visit.query.filter(Visit.id != visit.id)
+                .filter(or_(*identity_filters))
+                .order_by(Visit.timestamp.desc())
+                .limit(25)
+                .all()
+            )
+            for related in related_visits:
+                if related.email:
+                    lead = Lead.query.filter_by(email=related.email).first()
+                if not lead:
+                    lead = _lead_by_canvas(related.canvas_hash)
+                if lead:
+                    break
 
         def _append(json_str, value):
             try:

@@ -517,6 +517,7 @@ def apply_visit_scoring(
     best_reasons: list[str] = []
     best_conflicts: list[str] = []
     matched_visit_id = None
+    legacy_visitor_id = None
 
     for candidate in _load_candidates(visit, visit.fingerprint_composite_v1):
         candidate_score, reasons, conflicts = _score_identity_against(visit, candidate, components)
@@ -530,9 +531,15 @@ def apply_visit_scoring(
         matched_visit = db.session.get(Visit, matched_visit_id)
         if matched_visit is not None:
             _ensure_visitor_for_visit(matched_visit)
+            legacy_visitor_id = matched_visit.visitor_id
 
     allow_signal_reassign = bool(visit.visitor_id and (visit.identity_confidence or 0) < PROBABLE_THRESHOLD)
     visitor_id, signal_score, signal_reasons = match_visitor(visit, allow_reassign=allow_signal_reassign)
+    if legacy_visitor_id and legacy_visitor_id != visitor_id:
+        best_score = 0
+        best_reasons = []
+        best_conflicts.append("identity_system_mismatch")
+        matched_visit_id = None
     identity_score = max(best_score, signal_score)
     identity_reasons = _ordered_unique(best_reasons + signal_reasons)
 

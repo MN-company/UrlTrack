@@ -7,6 +7,7 @@ import requests
 from flask import current_app
 
 from ..config import Config
+from ..extensions import db
 from ..models import Visit, Visitor
 
 
@@ -150,13 +151,12 @@ def _raw_result(visit: Visit) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _api_request_body(visit: Visit, api_key: str) -> dict[str, Any]:
+def _api_request_body(visit: Visit) -> dict[str, Any]:
     raw = _raw_result(visit)
     components = raw.get("components") or raw.get("data") or {}
     body: dict[str, Any] = {
         "components": components,
         "options": {
-            "api_key": api_key,
             "timeout": 3000,
             "cache_api_call": True,
             "cache_lifetime_in_ms": 0,
@@ -192,10 +192,9 @@ def call_thumbmark_api(visit: Visit) -> dict[str, Any] | None:
             api_url,
             headers={
                 "x-api-key": api_key,
-                "Authorization": "custom-authorized",
                 "Content-Type": "application/json",
             },
-            json=_api_request_body(visit, api_key),
+            json=_api_request_body(visit),
             timeout=3,
         )
         visit.thumbmark_api_called = True
@@ -217,7 +216,7 @@ def maybe_enrich_thumbmark_api(visit: Visit, confidence_score: int) -> dict[str,
         return None
 
     if visit.visitor_id:
-        visitor = Visitor.query.get(visit.visitor_id)
+        visitor = db.session.get(Visitor, visit.visitor_id)
         if visitor and visitor.thumbmark_api_confidence_avg and visitor.thumbmark_api_confidence_avg > 0.85:
             return None
 
@@ -238,9 +237,5 @@ def maybe_enrich_thumbmark_api(visit: Visit, confidence_score: int) -> dict[str,
         visit.thumbmark_api_called = True
         visit.thumbmark_api_error = recent.thumbmark_api_error
         return {"cached": True}
-
-    seen_hash = Visit.query.filter(Visit.id != visit.id, Visit.thumbmark_hash == visit.thumbmark_hash).first()
-    if seen_hash:
-        return None
 
     return call_thumbmark_api(visit)
