@@ -3,14 +3,18 @@
 {% block breadcrumb %}Workspace / Progetti{% endblock %}
 
 {% block content %}
-<header class="topbar">
+<header class="page-header">
   <div>
     <p class="eyebrow">Campaign inventory</p>
     <h1>Projects and protected links</h1>
   </div>
-  <div class="actions">
+  <div class="actions project-actions">
+    <form class="search-bar" action="{{ url_for('dashboard.dashboard_links.links') }}" method="GET">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="search" name="q" placeholder="Cerca progetto o slug" value="{{ request.args.get('q', '') }}">
+    </form>
     <a class="btn ghost" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}"><i class="fa-solid fa-fingerprint"></i>Cross tracking</a>
-    <a class="btn primary" href="{{ url_for('dashboard.dashboard_links.create_full') }}"><i class="fa-solid fa-plus"></i>New project</a>
+    <a class="plus-btn" href="{{ url_for('dashboard.dashboard_links.create_full') }}"><i class="fa-solid fa-plus"></i>New project</a>
   </div>
 </header>
 
