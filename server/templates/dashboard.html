@@ -1,127 +1,158 @@
 {% extends "base.html" %}
 
-{% block breadcrumb %}System / Command Center{% endblock %}
+{% block breadcrumb %}Northstar workspace / Today{% endblock %}
 
 {% block content %}
-<div class="dashboard-grid">
-    <div class="card glass">
-        <div class="card-header">
-            <span class="card-title">Total Visits</span>
-            <i class="fa-solid fa-satellite-dish text-accent"></i>
-        </div>
-        <div class="stat-value">{{ total_visits }}</div>
-        <div class="stat-trend trend-up">Live telemetry enabled</div>
-    </div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Command Center</p>
+    <h1>Live tracking intelligence</h1>
+  </div>
+  <div class="actions">
+    <a class="btn ghost" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}"><i class="fa-solid fa-clock-rotate-left"></i>Timeline</a>
+    <a class="btn primary" href="{{ url_for('dashboard.dashboard_links.create_full') }}"><i class="fa-solid fa-plus"></i>New flow link</a>
+  </div>
+</header>
 
-    <div class="card glass">
-        <div class="card-header">
-            <span class="card-title">Identified Visits</span>
-            <i class="fa-solid fa-id-badge" style="color: var(--accent-success);"></i>
-        </div>
-        <div class="stat-value">{{ identified_visitors }}</div>
-        <div class="stat-trend">Visits with verified email</div>
-    </div>
-
-    <div class="card glass">
-        <div class="card-header">
-            <span class="card-title">Review Loop</span>
-            <i class="fa-solid fa-clipboard-check" style="color: var(--accent-warning);"></i>
-        </div>
-        <div class="stat-value">{{ reviewed_visits }}</div>
-        <div class="stat-trend">
-            {{ high_risk_visits }} high-risk visits
-        </div>
-    </div>
+<div class="mode-strip">
+  <span class="mode-chip active"><strong>Executive</strong> outcomes</span>
+  <span class="mode-chip"><strong>Creator</strong> link flows</span>
+  <span class="mode-chip"><strong>Investigator</strong> signals</span>
+  <span class="mode-chip"><strong>AI</strong> review loop</span>
 </div>
 
-<div class="dashboard-grid" style="grid-template-columns: 2fr 1fr;">
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title"><i class="fa-solid fa-tower-broadcast"></i> Recent Activity</h3>
-            <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="btn btn-ghost">View timeline</a>
-        </div>
+<section class="grid metrics">
+  <div class="panel metric compact"><div class="label">Visits captured</div><div class="value">{{ total_visits }}</div><div class="delta">Public redirect + beacon telemetry</div></div>
+  <div class="panel metric compact"><div class="label">Identified visitors</div><div class="value">{{ identified_visitors }}</div><div class="delta">Email and identity evidence</div></div>
+  <div class="panel metric compact"><div class="label">Active links</div><div class="value">{{ links|length }}</div><div class="delta">Campaigns and gated flows</div></div>
+  <div class="panel metric compact"><div class="label">High risk</div><div class="value">{{ high_risk_visits }}</div><div class="delta"><span class="badge danger">Review queue</span></div></div>
+  <div class="panel metric compact"><div class="label">Reviewed</div><div class="value">{{ reviewed_visits }}</div><div class="delta">Human labels saved</div></div>
+  <div class="panel metric compact"><div class="label">Worker</div><div class="value">On</div><div class="delta"><span class="badge success">Telemetry healthy</span></div></div>
+</section>
 
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Visitor</th>
-                    <th>Link</th>
-                    <th>Location</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for visit in visits %}
-                <tr>
-                    <td class="text-mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                    <td>
-                        {% if visit.email %}
-                        <span class="text-accent">{{ visit.email }}</span>
-                        {% else %}
-                        <span class="text-mono">{{ visit.ip_address }}</span>
-                        {% endif %}
-                    </td>
-                    <td><a href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) }}">/{{ visit.link.slug }}</a></td>
-                    <td>
-                        {% if visit.country_code %}
-                        <img src="https://flagcdn.com/16x12/{{ visit.country_code|lower }}.png" alt="{{ visit.country }}">
-                        {% endif %}
-                        {{ visit.city or 'Unknown' }}{% if visit.city and visit.country %}, {% endif %}{{ visit.country or '' }}
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="4" class="text-muted">No visits captured yet.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<section class="grid triple" style="margin-top:14px">
+  <div class="panel">
+    <div class="panel-head">
+      <h2>What happened that matters</h2>
+      <span class="badge info">Insight feed</span>
     </div>
+    <div class="insight-grid">
+      {% for visit in visits[:4] %}
+      <a class="insight" href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) if visit.link else url_for('dashboard.dashboard_stats.global_timeline') }}">
+        {% if visit.risk_score and visit.risk_score >= 50 %}
+        <span class="badge danger">High risk</span>
+        {% elif visit.email %}
+        <span class="badge success">Identified</span>
+        {% elif visit.thumbmark_hash or visit.fingerprint_composite_v1 %}
+        <span class="badge info">Fingerprint</span>
+        {% else %}
+        <span class="badge">Visit</span>
+        {% endif %}
+        <strong>{{ visit.email or visit.ip_address or "Anonymous visitor" }}</strong>
+        <p>/{{ visit.link.slug if visit.link else "unknown" }} - {{ visit.city or "Unknown" }}{% if visit.country %}, {{ visit.country }}{% endif %} - ID {{ visit.identity_confidence or 0 }} / Risk {{ visit.risk_score or 0 }}</p>
+      </a>
+      {% else %}
+      <div class="insight"><span class="badge">Idle</span><strong>No visits yet</strong><p>Create a flow link and open it to start collecting telemetry.</p></div>
+      {% endfor %}
+    </div>
+  </div>
 
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">AI Priority Queue</h3>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:1rem;">
-            <a href="{{ url_for('dashboard.dashboard_links.create_full') }}" class="btn btn-primary w-full" style="justify-content:center;">
-                <i class="fa-solid fa-plus"></i> New campaign
-            </a>
-            <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}" class="btn btn-ghost w-full" style="justify-content:center;">
-                <i class="fa-solid fa-brain"></i> Open AI analyst
-            </a>
-            <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}?message={{ 'Which high-risk visits need review today?'|urlencode }}" class="btn btn-ghost w-full" style="justify-content:center;">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Ask what to review
-            </a>
-            <div style="display:flex;flex-direction:column;gap:0.55rem;">
-                {% for visit in priority_visits %}
-                <div style="padding:0.75rem;border:1px solid var(--border-subtle);border-radius:10px;background:rgba(0,0,0,0.18);">
-                    <div style="display:flex;justify-content:space-between;gap:0.5rem;">
-                        <strong>/{{ visit.link.slug if visit.link else 'unknown' }}</strong>
-                        <span class="badge {% if visit.risk_score and visit.risk_score >= 50 %}badge-danger{% else %}badge-warning{% endif %}">Risk {{ visit.risk_score or 0 }}</span>
-                    </div>
-                    <div style="font-size:0.82rem;color:var(--text-secondary);margin-top:0.25rem;">{{ visit.email or visit.ip_address }} · ID {{ visit.identity_confidence or 0 }}</div>
-                    <form method="POST" action="{{ url_for('dashboard.dashboard_leads.visit_review', visit_id=visit.id) }}" style="display:flex;gap:0.4rem;margin-top:0.55rem;">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="review_label" value="suspicious">
-                        <button class="btn btn-outline btn-sm" type="submit">Mark suspicious</button>
-                    </form>
-                </div>
-                {% else %}
-                <div style="color:var(--text-muted);font-size:0.9rem;">No high-risk visits waiting. Tiny victory parade, very tasteful.</div>
-                {% endfor %}
-            </div>
-            <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Runtime</div>
-                <div class="flex-between" style="font-size:0.9rem;margin-bottom:0.4rem;">
-                    <span>Worker</span>
-                    <span class="text-accent"><i class="fa-solid fa-circle-check"></i> Active</span>
-                </div>
-                <div class="flex-between" style="font-size:0.9rem;">
-                    <span>AI Model</span>
-                    <span>{{ config.GEMINI_MODEL if config else 'Configured' }}</span>
-                </div>
-            </div>
-        </div>
+  <aside class="panel">
+    <div class="panel-head">
+      <h2>Top campaigns</h2>
+      <a class="badge success" href="{{ url_for('dashboard.dashboard_links.links') }}">All</a>
     </div>
-</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Campaign</th><th>Visits</th><th>Defenses</th></tr></thead>
+        <tbody>
+        {% for link in links[:6] %}
+          <tr>
+            <td><a class="mono" href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}">/{{ link.slug }}</a></td>
+            <td>{{ link.visits|length }}</td>
+            <td>
+              {% if link.require_email %}<span class="badge info">Email</span>{% endif %}
+              {% if link.block_vpn %}<span class="badge danger">VPN</span>{% endif %}
+              {% if link.enable_captcha %}<span class="badge warn">Captcha</span>{% endif %}
+              {% if not link.require_email and not link.block_vpn and not link.enable_captcha %}<span class="badge success">Open</span>{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="muted">No campaigns yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </aside>
+
+  <aside class="panel">
+    <div class="panel-head">
+      <h2>Traffic quality</h2>
+      <span class="badge warn">Needs review</span>
+    </div>
+    <div class="queue">
+      <div class="queue-item"><div class="queue-top"><span>Human estimated</span><strong>{{ 100 - ((high_risk_visits * 100 // total_visits) if total_visits else 0) }}%</strong></div><div class="quality-bar"><span style="width:{{ 100 - ((high_risk_visits * 100 // total_visits) if total_visits else 0) }}%"></span></div></div>
+      <div class="queue-item"><div class="queue-top"><span>High risk visits</span><span class="badge danger">{{ high_risk_visits }}</span></div><div class="queue-meta">VPN, bot, conflict, missing beacon, or scoring flags.</div></div>
+      <div class="queue-item"><div class="queue-top"><span>Reviewed labels</span><span class="badge success">{{ reviewed_visits }}</span></div><div class="queue-meta">Feedback loop for future scoring.</div></div>
+    </div>
+  </aside>
+</section>
+
+<section class="grid split" style="margin-top:14px">
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Visitor timeline</h2>
+      <span class="badge info">Live refresh</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Time</th><th>Visitor</th><th>Link</th><th>Country</th><th>Device</th><th>Outcome</th></tr></thead>
+        <tbody>
+        {% for visit in visits %}
+          <tr>
+            <td class="mono">{{ visit.timestamp.strftime('%m-%d %H:%M') }}</td>
+            <td>{{ visit.email or visit.ip_address or "Anonymous" }}</td>
+            <td>{% if visit.link %}<a class="mono" href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) }}">/{{ visit.link.slug }}</a>{% else %}-{% endif %}</td>
+            <td>{{ visit.country_code or visit.country or "-" }}</td>
+            <td>{{ visit.os_family or "Unknown" }} / {{ visit.device_type or "Unknown" }}</td>
+            <td>
+              {% if visit.review_label %}<span class="badge info">{{ visit.review_label }}</span>
+              {% elif visit.risk_score and visit.risk_score >= 50 %}<span class="badge danger">Review</span>
+              {% elif visit.email %}<span class="badge success">Lead</span>
+              {% else %}<span class="badge">Tracked</span>{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="muted">No visits captured yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <div class="panel-head">
+      <h2>Priority queue</h2>
+      <span class="badge danger">{{ priority_visits|length }} open</span>
+    </div>
+    <div class="queue">
+      {% for visit in priority_visits %}
+      <div class="queue-item">
+        <div class="queue-top">
+          <div class="queue-title">/{{ visit.link.slug if visit.link else 'unknown' }} - {{ visit.email or visit.ip_address or 'anonymous' }}</div>
+          <span class="badge {% if visit.risk_score and visit.risk_score >= 50 %}danger{% else %}warn{% endif %}">{{ visit.risk_score or 0 }}</span>
+        </div>
+        <div class="queue-meta">ID {{ visit.identity_confidence or 0 }} - {{ visit.timestamp.strftime('%Y-%m-%d %H:%M') }}</div>
+        <form method="POST" action="{{ url_for('dashboard.dashboard_leads.visit_review', visit_id=visit.id) }}" style="margin-top:10px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="review_label" value="suspicious">
+          <button class="btn ghost" type="submit">Mark suspicious</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="queue-item"><div class="queue-title">No high-risk visits waiting</div><div class="queue-meta">The review loop is clear.</div></div>
+      {% endfor %}
+    </div>
+  </aside>
+</section>
 {% endblock %}

@@ -73,6 +73,10 @@ tbody tr:hover { background: oklch(27% 0.03 250 / 0.7); }
 tr[onclick] { cursor: pointer; }
 .mono { font-family: var(--font-mono); font-size: 12px; }
 .muted { color: var(--muted); }
+.project-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.project-cell .name { font-weight: 700; letter-spacing: -0.01em; }
+.project-cell .desc { color: var(--muted); font-size: 11px; margin-top: 2px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-icon-badge { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 7px; color: var(--accent-contrast); background: linear-gradient(135deg, var(--accent), var(--green)); font-weight: 850; }
 .badge { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--fg); background: var(--surface-2); font-size: 12px; }
 .badge.success { color: var(--success); background: oklch(70% 0.16 150 / 0.1); border-color: oklch(70% 0.16 150 / 0.25); }
 .badge.warn { color: var(--warn); background: oklch(76% 0.15 78 / 0.1); border-color: oklch(76% 0.15 78 / 0.24); }
@@ -94,6 +98,9 @@ tr[onclick] { cursor: pointer; }
 .input:focus, .select:focus, .textarea:focus { border-color: var(--primary); }
 .toggle-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .toggle { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); cursor: pointer; }
+.toggle h3 { font-size: 13px; margin: 0 0 2px; }
+.toggle p { margin: 0; font-size: 12px; color: var(--muted); }
+.toggle input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--primary); }
 .switch { width: 38px; height: 22px; border-radius: 999px; padding: 3px; background: var(--surface-3); border: 1px solid var(--border); }
 .switch::after { content: ""; display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform .16s ease, background .16s ease; }
 .toggle.enabled .switch { background: oklch(62% 0.16 250 / 0.22); border-color: oklch(62% 0.16 250 / 0.45); }

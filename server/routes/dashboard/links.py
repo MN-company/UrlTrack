@@ -1,5 +1,6 @@
 import os
 import uuid as uuid_lib
+import json
 from pathlib import Path
 
 from dotenv import set_key
@@ -99,6 +100,32 @@ def _link_form_values(form):
     }
 
 
+def _flow_config_from_form(form, slug: str, destination: str) -> str | None:
+    raw_flow = sanitize(form.get("flow_config"), 20000)
+    if raw_flow:
+        try:
+            parsed = json.loads(raw_flow)
+        except (TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict):
+            return json.dumps(parsed, sort_keys=True)
+    return json.dumps(
+        {
+            "version": 1,
+            "nodes": [
+                {"id": "entry", "type": "entry", "label": f"/{slug}"},
+                {"id": "risk", "type": "decision", "label": "VPN / bot score"},
+                {"id": "route", "type": "route", "label": destination},
+            ],
+            "edges": [
+                {"source": "entry", "target": "risk"},
+                {"source": "risk", "target": "route"},
+            ],
+        },
+        sort_keys=True,
+    )
+
+
 @bp.route("/")
 @bp.route("")
 @login_required
@@ -176,6 +203,7 @@ def create_link():
         return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
     link.public_masked_url = _mask_url_for_link(slug)
+    link.flow_config = _flow_config_from_form(request.form, slug, link.destination)
     db.session.add(link)
     db.session.commit()
     flash(f"Link created: {_public_link_url(slug)}", "success")
@@ -210,6 +238,7 @@ def create_full():
             return redirect(url_for("dashboard.dashboard_links.create_full"))
 
         link = Link(slug=slug, **values)
+        link.flow_config = _flow_config_from_form(request.form, slug, values["destination"])
         password = request.form.get("password", "")
         if sanitize(password, 255):
             import hashlib

@@ -1,338 +1,244 @@
 {% extends "base.html" %}
 
-{% block head %}
-<style>
-    .tab-nav {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 24px;
-        border-bottom: 1px solid var(--border-subtle);
-        padding-bottom: 12px;
-        flex-wrap: wrap;
-    }
-
-    .tab-btn {
-        background: none;
-        border: none;
-        color: var(--text-muted);
-        padding: 10px 18px;
-        cursor: pointer;
-        font-size: 0.95rem;
-        border-radius: 8px;
-        transition: all 0.2s ease;
-    }
-
-    .tab-btn:hover {
-        background: rgba(255, 255, 255, 0.05);
-        color: var(--text-primary);
-    }
-
-    .tab-btn.active {
-        background: var(--accent-primary);
-        color: #000;
-        font-weight: 600;
-    }
-
-    .tab-content {
-        display: none;
-        animation: fadeIn 0.3s ease;
-    }
-
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    .tab-content.active {
-        display: block;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-    }
-
-    .form-group label {
-        display: block;
-        color: var(--text-secondary);
-        margin-bottom: 8px;
-        font-size: 0.9rem;
-        font-weight: 500;
-    }
-
-    .form-group input,
-    .form-group select {
-        width: 100%;
-        background: var(--bg-input);
-        border: 1px solid var(--border-subtle);
-        color: var(--text-primary);
-        padding: 12px 14px;
-        border-radius: 8px;
-        font-size: 0.95rem;
-        transition: border-color 0.2s ease;
-    }
-
-    .form-group input:focus,
-    .form-group select:focus {
-        outline: none;
-        border-color: var(--accent-primary);
-    }
-
-    .form-group input::placeholder {
-        color: var(--text-muted);
-    }
-
-    .toggle-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 14px 16px;
-        background: var(--bg-input);
-        border: 1px solid var(--border-subtle);
-        border-radius: 10px;
-        margin-bottom: 12px;
-    }
-
-    .toggle-row label {
-        margin: 0;
-        color: var(--text-primary);
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .toggle-row input[type="checkbox"] {
-        width: 20px;
-        height: 20px;
-        accent-color: var(--accent-primary);
-        cursor: pointer;
-    }
-
-    .toggle-row input[type="text"] {
-        background: rgba(0, 0, 0, 0.3);
-        border: 1px solid var(--border-subtle);
-        color: var(--text-primary);
-        padding: 8px 12px;
-        border-radius: 6px;
-        font-size: 0.85rem;
-    }
-
-    .section-title {
-        font-size: 0.8rem;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 16px;
-        margin-top: 24px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--border-subtle);
-    }
-</style>
-<script>
-    function openTab(name) {
-        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-        document.getElementById(name).classList.add('active');
-        document.getElementById('btn-' + name).classList.add('active');
-    }
-</script>
-{% endblock %}
+{% block breadcrumb %}Workspace / Link Studio{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width: 800px; margin: 0 auto;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-        <h2>Create New Link</h2>
-        <a href="/dashboard" class="btn-outline btn-sm">Cancel</a>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Link Studio</p>
+    <h1>Build the protected link as a flow</h1>
+  </div>
+  <div class="actions">
+    <a class="btn ghost" href="{{ url_for('dashboard.dashboard_links.links') }}"><i class="fa-solid fa-arrow-left"></i>Projects</a>
+    <button class="btn ghost" type="button" data-run-flow><i class="fa-solid fa-play"></i>Run test</button>
+    <button class="btn primary" type="submit" form="link-studio-form"><i class="fa-solid fa-upload"></i>Publish link</button>
+  </div>
+</header>
+
+<div class="mode-strip">
+  <span class="mode-chip active"><strong>Canvas</strong> visual link logic</span>
+  <span class="mode-chip"><strong>Simple</strong> one-minute setup</span>
+  <span class="mode-chip"><strong>Investigator</strong> risk and evidence</span>
+  <span class="mode-chip"><strong>QR</strong> shares this flow</span>
+</div>
+
+<form id="link-studio-form" method="POST">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="flow_config" id="flow_config">
+
+  <section class="grid metrics">
+    <div class="panel metric compact"><div class="label">Final link</div><div class="value mono" id="final-link-preview" style="font-size:20px">/{{ request.form.get('slug', 'auto') or 'auto' }}</div><div class="delta">Slug can be random</div></div>
+    <div class="panel metric compact"><div class="label">Active nodes</div><div class="value">7</div><div class="delta"><span class="badge success">Valid flow</span></div></div>
+    <div class="panel metric compact"><div class="label">Visitor friction</div><div class="value" id="friction-preview">Low</div><div class="delta">Changes with gates</div></div>
+    <div class="panel metric compact"><div class="label">Protection</div><div class="value" id="protection-preview">42</div><div class="delta"><span class="badge warn">Adaptive</span></div></div>
+    <div class="panel metric compact"><div class="label">Lead tracking</div><div class="value" id="lead-preview">Off</div><div class="delta">Email gate controls this</div></div>
+    <div class="panel metric compact"><div class="label">QR source</div><div class="value">Ready</div><div class="delta">Editor after publish</div></div>
+  </section>
+
+  <section class="creator-shell" style="margin-top:14px">
+    <div class="panel">
+      <div class="creator-toolbar">
+        <div>
+          <h2>Link creator canvas</h2>
+          <p style="margin:4px 0 0">Connect entry, gates, risk decisions, routing, lead capture, QR, and evidence.</p>
+        </div>
+        <div class="palette-rail" aria-label="Flow modes">
+          <button type="button" class="palette-chip active" data-focus-node="entry">Entry</button>
+          <button type="button" class="palette-chip" data-focus-node="gate">Gate</button>
+          <button type="button" class="palette-chip" data-focus-node="risk">Risk</button>
+          <button type="button" class="palette-chip" data-focus-node="route">Route</button>
+        </div>
+      </div>
+      <div class="flow-canvas nc-wrap" aria-label="Node canvas link flow">
+        <div class="canvas-lane"></div>
+        <div class="flow-edge" style="left:206px;top:135px;width:82px;transform:rotate(14deg)"></div>
+        <div class="flow-edge" style="left:396px;top:160px;width:82px;transform:rotate(18deg)"></div>
+        <div class="flow-edge dashed" style="left:586px;top:178px;width:72px;transform:rotate(42deg)"></div>
+        <div class="flow-edge" style="left:394px;top:350px;width:86px;transform:rotate(-18deg)"></div>
+        <div class="flow-edge" style="left:586px;top:330px;width:72px;transform:rotate(-14deg)"></div>
+
+        <button type="button" class="flow-node selected nc-node" data-flow-node="entry" style="left:28px;top:74px">
+          <span class="node-port"></span>
+          <span class="node-top"><span class="node-kind">Entry</span><span class="badge success">Ready</span></span>
+          <span class="node-title mono" data-entry-title>/auto</span>
+          <span class="node-detail">Domain, slug, UTM, first event, final link preview.</span>
+        </button>
+        <button type="button" class="flow-node nc-node" data-flow-node="gate" style="left:220px;top:116px">
+          <span class="node-port in"></span><span class="node-port"></span>
+          <span class="node-top"><span class="node-kind">Gate</span><span class="badge info">Adaptive</span></span>
+          <span class="node-title">Email + consent</span>
+          <span class="node-detail">Capture lead for unknown visitors; skip for known leads.</span>
+        </button>
+        <button type="button" class="flow-node nc-node" data-flow-node="risk" style="left:412px;top:168px">
+          <span class="node-port in"></span><span class="node-port"></span>
+          <span class="node-top"><span class="node-kind">Decision</span><span class="badge warn">Risk</span></span>
+          <span class="node-title">VPN / bot score</span>
+          <span class="node-detail">Route by fingerprint, ASN, captcha result, and velocity.</span>
+        </button>
+        <button type="button" class="flow-node nc-node" data-flow-node="route" style="left:604px;top:240px">
+          <span class="node-port in"></span><span class="node-port"></span>
+          <span class="node-top"><span class="node-kind">Route</span><span class="badge success">Paths</span></span>
+          <span class="node-title">Smart destination</span>
+          <span class="node-detail">Desktop, mobile, and safe URL routing.</span>
+        </button>
+        <button type="button" class="flow-node nc-node" data-flow-node="capture" style="left:220px;top:380px">
+          <span class="node-port in"></span><span class="node-port"></span>
+          <span class="node-top"><span class="node-kind">Lead</span><span class="badge success">CRM</span></span>
+          <span class="node-title">Identity merge</span>
+          <span class="node-detail">Email, score, notes, campaign history.</span>
+        </button>
+        <button type="button" class="flow-node nc-node" data-flow-node="qr" style="left:28px;top:412px">
+          <span class="node-port"></span>
+          <span class="node-top"><span class="node-kind">Source</span><span class="badge info">QR</span></span>
+          <span class="node-title">Event scan</span>
+          <span class="node-detail">Same rules, distinct scan analytics.</span>
+        </button>
+        <button type="button" class="flow-node nc-node" data-flow-node="alert" style="left:604px;top:438px">
+          <span class="node-port in"></span>
+          <span class="node-top"><span class="node-kind">Output</span><span class="badge danger">Evidence</span></span>
+          <span class="node-title">Alert + audit</span>
+          <span class="node-detail">Telegram, webhook, graph edge, AI citation.</span>
+        </button>
+      </div>
     </div>
 
-    <form method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="tab-nav">
-            <button type="button" id="btn-general" class="tab-btn active" onclick="openTab('general')">General</button>
-            <button type="button" id="btn-targeting" class="tab-btn" onclick="openTab('targeting')">Targeting</button>
-            <button type="button" id="btn-protection" class="tab-btn"
-                onclick="openTab('protection')">Protection</button>
-            <button type="button" id="btn-scheduling" class="tab-btn"
-                onclick="openTab('scheduling')">Scheduling</button>
-            <button type="button" id="btn-limits" class="tab-btn" onclick="openTab('limits')">Limits</button>
+    <aside class="inspector">
+      <section class="panel pad">
+        <div class="node-inspector">
+          <div class="inspector-title">
+            <span class="badge info">Selected node</span>
+            <h2 data-inspector-title>Short link entry</h2>
+          </div>
+          <p data-inspector-body>Owns the public URL, domain, slug, and first-touch event.</p>
+          <div class="form-grid" style="grid-template-columns:1fr">
+            <div class="field"><label for="destination">Destination URL</label><input class="input" id="destination" type="url" name="destination" placeholder="https://example.com/secure-room" required></div>
+            <div class="field"><label for="slug">Slug</label><input class="input mono" id="slug" type="text" name="slug" placeholder="auto-generated"></div>
+            <div class="field"><label for="safe_url">Safe URL</label><input class="input" id="safe_url" type="url" name="safe_url" value="https://www.google.com"></div>
+          </div>
         </div>
+      </section>
 
-        <div id="general" class="tab-content active">
-            <div class="form-group">
-                <label>Destination URL *</label>
-                <input type="url" name="destination" placeholder="https://..." required>
-            </div>
-            <div class="form-group">
-                <label>Slug (Leave empty for random)</label>
-                <input type="text" name="slug" placeholder="e.g. secret-sale">
-            </div>
-
-            {% if mask_with_isgd %}
-            <div class="toggle-row" style="margin-top: 10px;">
-                <label>Public masking</label>
-                <span>Enabled globally via MASK_WITH_ISGD</span>
-            </div>
-            {% endif %}
+      <section class="panel pad">
+        <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px">
+          <h2>Protection rules</h2>
+          <span class="badge warn">Adaptive</span>
         </div>
-
-        <!-- V14: Limits Tab (New) -->
-        <div id="limits" class="tab-content">
-            <div class="form-group">
-                <label>Max Clicks (0 = Unlimited)</label>
-                <input type="number" name="max_clicks" value="0">
-            </div>
-            <div class="form-group">
-                <label>Expiration (Minutes, 0 = Forever)</label>
-                <input type="number" name="expiration_minutes" value="0">
-            </div>
+        <div class="toggle-list" style="grid-template-columns:1fr">
+          <label class="toggle enabled"><div><h3>Block bots</h3><p>Known crawlers and bot user agents.</p></div><input type="checkbox" name="block_bots" value="true" checked></label>
+          <label class="toggle"><div><h3>Block VPN / proxy</h3><p>VPN, proxy, hosting ASN and cloud signals.</p></div><input type="checkbox" name="block_vpn" value="true"></label>
+          <label class="toggle"><div><h3>Captcha gate</h3><p>Cloudflare Turnstile when configured.</p></div><input type="checkbox" name="enable_captcha" value="true"></label>
+          <label class="toggle"><div><h3>Email gate</h3><p>Capture and validate lead emails.</p></div><input type="checkbox" name="require_email" value="true"></label>
+          <label class="toggle"><div><h3>AdBlock safe route</h3><p>Route adblock users to safe URL.</p></div><input type="checkbox" name="block_adblock" value="true"></label>
         </div>
+      </section>
 
-        <div id="targeting" class="tab-content">
-            <div class="form-group">
-                <label><i class="fab fa-apple"></i> iOS Destination</label>
-                <input type="url" name="ios_url" placeholder="https://apps.apple.com/...">
-            </div>
-            <div class="form-group">
-                <label><i class="fab fa-android"></i> Android Destination</label>
-                <input type="url" name="android_url" placeholder="https://play.google.com/...">
-            </div>
+      <section class="panel pad">
+        <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px">
+          <h2>Routing and limits</h2>
+          <span class="badge info">Optional</span>
         </div>
-
-        <div id="protection" class="tab-content">
-            <div class="toggle-row">
-                <label>Block Bots & Crawlers</label>
-                <input type="checkbox" name="block_bots" value="true" checked style="width:auto;">
-            </div>
-            <div class="toggle-row">
-                <label>Block VPN / Proxies</label>
-                <input type="checkbox" name="block_vpn" value="true" style="width:auto;">
-            </div>
-            <div class="toggle-row">
-                <label>Block AdBlock Users (Redirect to Safe)</label>
-                <input type="checkbox" name="block_adblock" value="true" style="width:auto;">
-            </div>
-
-            <div class="toggle-row" style="margin-top:20px;">
-                <label>Enable Captcha (Turnstile)</label>
-                <input type="checkbox" name="enable_captcha" value="true" style="width:auto;">
-            </div>
-
-            <div class="toggle-row">
-                <label>Require Valid Email (Email Gate)</label>
-                <input type="checkbox" name="require_email" value="true" style="width:auto;">
-            </div>
-
-            <div class="form-group" style="margin-top: 10px;">
-                <label>Email Policy</label>
-                <select name="email_policy">
-                    <option value="all">Allow All Emails</option>
-                    <option value="certified">Certified Only (Block Temp)</option>
-                    <option value="trackable">Trackable Only (Corp/ISP)</option>
-                </select>
-            </div>
-            <div class="form-group" style="margin-top:16px;">
-                <label>Allowed Countries <span style="color:var(--text-muted)">(empty = all)</span></label>
-                <select id="countriesSelect" multiple
-                    style="width:100%;height:160px;background:var(--bg-input);
-                           border:1px solid var(--border-subtle);color:var(--text-primary);
-                           border-radius:8px;padding:8px;appearance:none;">
-                    <option value="IT">🇮🇹 Italy</option>
-                    <option value="US">🇺🇸 United States</option>
-                    <option value="GB">🇬🇧 United Kingdom</option>
-                    <option value="DE">🇩🇪 Germany</option>
-                    <option value="FR">🇫🇷 France</option>
-                    <option value="ES">🇪🇸 Spain</option>
-                    <option value="CH">🇨🇭 Switzerland</option>
-                    <option value="AT">🇦🇹 Austria</option>
-                    <option value="NL">🇳🇱 Netherlands</option>
-                    <option value="BE">🇧🇪 Belgium</option>
-                    <option value="PT">🇵🇹 Portugal</option>
-                    <option value="SE">🇸🇪 Sweden</option>
-                    <option value="NO">🇳🇴 Norway</option>
-                    <option value="DK">🇩🇰 Denmark</option>
-                    <option value="FI">🇫🇮 Finland</option>
-                    <option value="PL">🇵🇱 Poland</option>
-                    <option value="CZ">🇨🇿 Czech Republic</option>
-                    <option value="RO">🇷🇴 Romania</option>
-                    <option value="HU">🇭🇺 Hungary</option>
-                    <option value="GR">🇬🇷 Greece</option>
-                    <option value="CA">🇨🇦 Canada</option>
-                    <option value="AU">🇦🇺 Australia</option>
-                    <option value="JP">🇯🇵 Japan</option>
-                    <option value="KR">🇰🇷 South Korea</option>
-                    <option value="CN">🇨🇳 China</option>
-                    <option value="IN">🇮🇳 India</option>
-                    <option value="BR">🇧🇷 Brazil</option>
-                    <option value="MX">🇲🇽 Mexico</option>
-                    <option value="AR">🇦🇷 Argentina</option>
-                    <option value="ZA">🇿🇦 South Africa</option>
-                    <option value="RU">🇷🇺 Russia</option>
-                    <option value="TR">🇹🇷 Turkey</option>
-                    <option value="SA">🇸🇦 Saudi Arabia</option>
-                    <option value="AE">🇦🇪 UAE</option>
-                    <option value="SG">🇸🇬 Singapore</option>
-                    <option value="UA">🇺🇦 Ukraine</option>
-                </select>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">
-                    Ctrl+click per più paesi. Nessuna selezione = tutti ammessi.
-                </p>
-                <input type="hidden" name="allowed_countries" id="allowedCountriesHidden">
-            </div>
-
-            <div class="form-group" style="margin-top: 20px;">
-                <label>Safe URL (Cloaking Destination)</label>
-                <input type="url" name="safe_url" value="https://www.google.com" placeholder="https://www.google.com">
-            </div>
-
-            <div class="form-group">
-                <label>Password Protection</label>
-                <input type="text" name="password" placeholder="Leave empty to disable">
-            </div>
+        <div class="form-grid" style="grid-template-columns:1fr">
+          <div class="field"><label>Email policy</label><select class="select" name="email_policy"><option value="all">Allow all</option><option value="certified">Certified only</option><option value="trackable">Trackable only</option></select></div>
+          <div class="field"><label>Allowed countries</label><input class="input mono" name="allowed_countries" placeholder="IT,US,GB"></div>
+          <div class="field"><label>iOS URL</label><input class="input" type="url" name="ios_url" placeholder="https://apps.apple.com/..."></div>
+          <div class="field"><label>Android URL</label><input class="input" type="url" name="android_url" placeholder="https://play.google.com/..."></div>
+          <div class="field"><label>Max clicks</label><input class="input" type="number" name="max_clicks" value="0" min="0"></div>
+          <div class="field"><label>Expiration minutes</label><input class="input" type="number" name="expiration_minutes" value="0" min="0"></div>
+          <div class="field"><label>Schedule start hour</label><input class="input" type="number" name="schedule_start_hour" min="0" max="23"></div>
+          <div class="field"><label>Schedule end hour</label><input class="input" type="number" name="schedule_end_hour" min="0" max="23"></div>
+          <div class="field"><label>Timezone</label><input class="input" name="schedule_timezone" value="UTC"></div>
+          <div class="field"><label>Password</label><input class="input" type="text" name="password" placeholder="Leave empty to disable"></div>
         </div>
+      </section>
 
-        <div id="scheduling" class="tab-content">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                <div class="form-group">
-                    <label>Start Active Hour (0-23)</label>
-                    <input type="number" name="schedule_start_hour" min="0" max="23">
-                </div>
-                <div class="form-group">
-                    <label>End Active Hour (0-23)</label>
-                    <input type="number" name="schedule_end_hour" min="0" max="23">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Timezone</label>
-                <input type="text" name="schedule_timezone" value="UTC">
-            </div>
-        </div>
+      {% if mask_with_isgd %}
+      <section class="panel pad"><span class="badge success">Public masking enabled globally via MASK_WITH_ISGD</span></section>
+      {% endif %}
+    </aside>
+  </section>
+</form>
+{% endblock %}
 
-        <div style="margin-top: 30px; border-top: var(--border); padding-top: 20px; text-align: right;">
-            <button type="submit" class="btn">CREATE LINK</button>
-        </div>
-    </form>
-</div>
-<script>
-(function(){
-  const sel=document.getElementById('countriesSelect');
-  const hid=document.getElementById('allowedCountriesHidden');
-  if(!sel||!hid)return;
-  const existing=typeof EDIT_ALLOWED_COUNTRIES!=='undefined'
-    ?EDIT_ALLOWED_COUNTRIES:'';
-  if(existing){
-    const codes=existing.split(',').map(s=>s.trim());
-    Array.from(sel.options).forEach(o=>{if(codes.includes(o.value))o.selected=true;});
+{% block scripts %}
+<script nonce="{{ csp_nonce|default('') }}">
+(function () {
+  const form = document.getElementById("link-studio-form");
+  const slug = document.getElementById("slug");
+  const destination = document.getElementById("destination");
+  const flowInput = document.getElementById("flow_config");
+  const finalPreview = document.getElementById("final-link-preview");
+  const entryTitle = document.querySelector("[data-entry-title]");
+  const leadPreview = document.getElementById("lead-preview");
+  const frictionPreview = document.getElementById("friction-preview");
+  const protectionPreview = document.getElementById("protection-preview");
+  const nodes = document.querySelectorAll("[data-flow-node]");
+  const inspectorTitle = document.querySelector("[data-inspector-title]");
+  const inspectorBody = document.querySelector("[data-inspector-body]");
+  const copy = {
+    entry: ["Short link entry", "Owns the public URL, domain, slug, and first-touch event."],
+    gate: ["Email and consent gate", "Controls lead capture, validation policy, and visitor friction."],
+    risk: ["Risk decision", "Uses VPN, bot, captcha, country, and beacon signals for routing."],
+    route: ["Smart destination", "Chooses destination, safe URL, iOS URL, or Android URL."],
+    capture: ["Identity merge", "Feeds lead intelligence, visitor profiles, and review loops."],
+    qr: ["QR source", "Shares the same protected flow while preserving scan attribution."],
+    alert: ["Alert and audit", "Creates evidence for Telegram, webhooks, graph, and AI analysis."]
+  };
+
+  function checked(name) {
+    const el = form.querySelector('[name="' + name + '"]');
+    return !!(el && el.checked);
   }
-  sel.closest('form').addEventListener('submit',function(){
-    hid.value=Array.from(sel.selectedOptions).map(o=>o.value).join(',');
+
+  function updateFlow() {
+    const slugValue = slug.value.trim() || "auto";
+    const destValue = destination.value.trim() || "https://example.com";
+    const riskScore = 28 + (checked("block_bots") ? 14 : 0) + (checked("block_vpn") ? 22 : 0) + (checked("enable_captcha") ? 16 : 0) + (checked("block_adblock") ? 8 : 0);
+    finalPreview.textContent = "/" + slugValue;
+    entryTitle.textContent = "/" + slugValue;
+    leadPreview.textContent = checked("require_email") ? "On" : "Off";
+    frictionPreview.textContent = checked("require_email") || checked("enable_captcha") ? "Med" : "Low";
+    protectionPreview.textContent = String(Math.min(100, riskScore));
+    flowInput.value = JSON.stringify({
+      version: 1,
+      nodes: [
+        { id: "entry", type: "entry", label: "/" + slugValue },
+        { id: "gate", type: "gate", enabled: checked("require_email"), label: "Email gate" },
+        { id: "risk", type: "decision", label: "VPN / bot score", score: Math.min(100, riskScore) },
+        { id: "route", type: "route", label: destValue },
+        { id: "capture", type: "lead", enabled: checked("require_email") },
+        { id: "qr", type: "source", label: "QR scan" },
+        { id: "alert", type: "output", label: "Alert + audit" }
+      ],
+      edges: [
+        { source: "entry", target: "gate" },
+        { source: "gate", target: "risk" },
+        { source: "risk", target: "route" },
+        { source: "gate", target: "capture" },
+        { source: "risk", target: "alert" }
+      ],
+      rules: {
+        block_bots: checked("block_bots"),
+        block_vpn: checked("block_vpn"),
+        enable_captcha: checked("enable_captcha"),
+        require_email: checked("require_email"),
+        block_adblock: checked("block_adblock")
+      }
+    });
+  }
+
+  nodes.forEach((node) => {
+    node.addEventListener("click", () => {
+      nodes.forEach((item) => item.classList.remove("selected"));
+      node.classList.add("selected");
+      const data = copy[node.dataset.flowNode] || copy.entry;
+      inspectorTitle.textContent = data[0];
+      inspectorBody.textContent = data[1];
+    });
   });
+  form.addEventListener("input", updateFlow);
+  form.addEventListener("change", updateFlow);
+  document.querySelector("[data-run-flow]")?.addEventListener("click", updateFlow);
+  updateFlow();
 })();
 </script>
 {% endblock %}
