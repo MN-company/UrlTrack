@@ -70,7 +70,7 @@ _CLOUD_KEYWORDS = (
 
 @bp.route("/", methods=["GET"])
 def index():
-    if Config.ADMIN_BOOTSTRAP_ENABLED and User.query.count() == 0:
+    if Config.ADMIN_BOOTSTRAP_ENABLED and not Config.SUPABASE_URL and User.query.count() == 0:
         return redirect(url_for("auth.setup"))
     return redirect(url_for("auth.login"))
 

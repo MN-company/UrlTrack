@@ -4,8 +4,9 @@ from pathlib import Path
 from flask import Flask, redirect, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from .auth_middleware import current_user, current_user_email
 from .config import Config
-from .extensions import cache, csrf, db, limiter, login_manager, migrate
+from .extensions import cache, csrf, db, limiter, migrate
 from .models import User
 from .worker import start_worker
 
@@ -70,17 +71,12 @@ def create_app() -> Flask:
         },
     )
     migrate.init_app(app, db)
-    login_manager.init_app(app)
-    login_manager.login_view = "auth.login"
     limiter.init_app(app)
     csrf.init_app(app)
 
-    @login_manager.user_loader
-    def load_user(user_id):
-        try:
-            return db.session.get(User, int(user_id))
-        except (TypeError, ValueError):
-            return None
+    @app.context_processor
+    def inject_auth_user():
+        return {"current_user": current_user, "current_user_email": current_user_email}
 
     @app.template_filter("markdown")
     def render_markdown(text):
@@ -122,9 +118,10 @@ def create_app() -> Flask:
         if request.endpoint in setup_allowed:
             return None
 
-        user_count = User.query.count()
-        if user_count == 0 and Config.ADMIN_BOOTSTRAP_ENABLED:
-            return redirect(url_for("auth.setup"))
+        if Config.ADMIN_BOOTSTRAP_ENABLED and not Config.SUPABASE_URL:
+            user_count = User.query.count()
+            if user_count == 0:
+                return redirect(url_for("auth.setup"))
         return None
 
     from .routes import api, auth, public
@@ -150,7 +147,7 @@ def create_app() -> Flask:
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
                 "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
                 "img-src 'self' data: blob: https://flagcdn.com https://*.gravatar.com; "
-                "connect-src 'self' https://challenges.cloudflare.com; "
+                "connect-src 'self' https://challenges.cloudflare.com https://*.supabase.co; "
                 "frame-src https://challenges.cloudflare.com;"
             )
         return response

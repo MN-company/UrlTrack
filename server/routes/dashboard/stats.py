@@ -3,10 +3,10 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
-from flask_login import login_required
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
+from ...auth_middleware import login_required
 from ...extensions import db
 from ...models import Link, Visit, Visitor
 from ...services.scoring import SIGNAL_WEIGHTS

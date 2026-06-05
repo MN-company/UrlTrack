@@ -4,10 +4,10 @@ from pathlib import Path
 
 from dotenv import set_key
 from flask import Blueprint, current_app, flash, make_response, redirect, render_template, request, url_for
-from flask_login import login_required
 from sqlalchemy import distinct, func
 from werkzeug.utils import secure_filename
 
+from ...auth_middleware import login_required
 from ...config import BASE_DIR, Config
 from ...extensions import cache, db
 from ...models import Link, Visit

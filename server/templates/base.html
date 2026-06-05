@@ -1,173 +1,187 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UrlTrack Dashboard</title>
+    <title>{% block title %}UrlTrack V3{% endblock %}</title>
+    <script nonce="{{ csp_nonce|default('') }}">
+    (function(){
+      function normalizeTheme(value) {
+        if (value === 'white') return 'light';
+        if (value === 'dark' || value === 'light' || value === 'system') return value;
+        return 'system';
+      }
+      try {
+        var raw = localStorage.getItem('urltrack-theme') || localStorage.getItem('urltrack-theme-choice');
+        var choice = normalizeTheme(raw);
+        localStorage.setItem('urltrack-theme', choice);
+        localStorage.setItem('urltrack-theme-choice', choice);
+        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var resolved = choice === 'system' ? (prefersDark ? 'dark' : 'light') : choice;
+        document.documentElement.dataset.themeChoice = choice;
+        document.documentElement.dataset.theme = resolved;
+      } catch (err) {
+        document.documentElement.dataset.themeChoice = 'system';
+        document.documentElement.dataset.theme = 'dark';
+      }
+    })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/urltrack.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js" nonce="{{ csp_nonce|default('') }}"></script>
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <style>
+      .v3-shell { min-height: 100vh; background: var(--page-bg, var(--bg)); color: var(--fg); }
+      .v3-topbar {
+        position: sticky; top: 12px; z-index: 100; margin: 0 auto 18px; width: min(1440px, calc(100% - 24px));
+        display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 6px 8px;
+        background: var(--glass, oklch(16% 0.026 260 / 0.78)); border: 1px solid var(--glass-border, var(--border));
+        border-radius: 12px; box-shadow: var(--shadow-card, 0 10px 34px rgba(0,0,0,.22)); backdrop-filter: blur(22px) saturate(1.3);
+      }
+      .v3-logo { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: var(--accent-contrast, #111); background: var(--accent); font-weight: 800; flex: 0 0 auto; }
+      .v3-nav { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+      .v3-nav::-webkit-scrollbar { display: none; }
+      .v3-nav a, .v3-menu-btn, .v3-avatar-btn {
+        min-height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted);
+        display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; cursor: pointer; white-space: nowrap;
+      }
+      .v3-nav a:hover, .v3-nav a.active, .v3-menu-btn:hover, .v3-avatar-btn:hover { color: var(--fg); background: color-mix(in oklch, var(--surface3) 45%, transparent); }
+      .v3-nav a.active { box-shadow: inset 0 -2px 0 var(--accent); }
+      .v3-right { position: relative; display: flex; align-items: center; gap: 6px; margin-left: auto; }
+      .v3-dropdown { position: absolute; right: 0; top: calc(100% + 8px); min-width: 210px; padding: 6px; display: none; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 10px; box-shadow: var(--shadow-card); }
+      .v3-dropdown.open { display: grid; gap: 2px; }
+      .v3-dropdown a, .v3-dropdown button { width: 100%; justify-content: flex-start; min-height: 36px; border: 0; border-radius: 8px; padding: 0 10px; color: var(--muted); background: transparent; display: flex; align-items: center; gap: 9px; font-size: 13px; cursor: pointer; text-align: left; }
+      .v3-dropdown a:hover, .v3-dropdown button:hover { color: var(--fg); background: color-mix(in oklch, var(--surface3) 45%, transparent); }
+      .theme-pill { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in oklch, var(--surface2) 70%, transparent); }
+      .theme-opt { width: 28px; min-height: 26px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--subtle, var(--muted)); cursor: pointer; }
+      .theme-opt.active { color: var(--accent); background: var(--accent-soft); }
+      .v3-main { width: min(1440px, calc(100% - 24px)); margin: 0 auto; padding: 0 0 88px; }
+      .v3-page-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 12px 0 14px; }
+      .v3-search { width: min(360px, 38vw); min-height: 36px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--fg); padding: 0 12px; }
+      .v3-flash { display: grid; gap: 8px; margin-bottom: 14px; }
+      .chat-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 80; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border); background: var(--accent); color: var(--accent-contrast, #111); display: grid; place-items: center; box-shadow: var(--shadow-card); }
+      .toast-stack { position: fixed; right: 18px; bottom: 74px; z-index: 79; display: grid; gap: 8px; max-width: 340px; }
+      @media (max-width: 860px) {
+        .v3-topbar { top: 8px; width: calc(100% - 16px); }
+        .v3-main { width: calc(100% - 16px); }
+        .v3-page-head { align-items: stretch; flex-direction: column; }
+        .v3-search { width: 100%; }
+      }
+    </style>
     <script nonce="{{ csp_nonce|default('') }}">
-        const originalFetch = window.fetch;
-        window.fetch = async (...args) => {
-            let [resource, config] = args;
-            config = config || {};
-            config.headers = config.headers || {};
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            if (csrfToken && !config.headers['X-CSRFToken']) {
-                config.headers['X-CSRFToken'] = csrfToken;
-                config.headers['X-Requested-With'] = 'XMLHttpRequest';
-            }
-            return originalFetch(resource, config);
-        };
+      const originalFetch = window.fetch;
+      window.fetch = async (...args) => {
+        let [resource, config] = args;
+        config = config || {};
+        config.headers = config.headers || {};
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (csrfToken && !config.headers['X-CSRFToken']) {
+          config.headers['X-CSRFToken'] = csrfToken;
+          config.headers['X-Requested-With'] = 'XMLHttpRequest';
+        }
+        return originalFetch(resource, config);
+      };
     </script>
     {% block head %}{% endblock %}
 </head>
 <body>
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-    <div class="app-shell">
-        {% if not hide_nav %}
-        <aside class="sidebar">
-            <div class="brand">
-                <i class="fa-solid fa-link"></i>
-                <span>URLTRACK</span>
-            </div>
+  <div class="v3-shell">
+    {% if not hide_nav %}
+    <header class="v3-topbar">
+      <a class="v3-logo" href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}" aria-label="UrlTrack home">U</a>
+      <nav class="v3-nav" aria-label="Primary">
+        <a href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}" class="{% if request.endpoint == 'dashboard.dashboard_links.dashboard_home' %}active{% endif %}"><i class="fa-solid fa-house"></i>Home</a>
+        <a href="{{ url_for('dashboard.dashboard_links.links') }}" class="{% if request.endpoint == 'dashboard.dashboard_links.links' %}active{% endif %}"><i class="fa-solid fa-folder-tree"></i>Progetti</a>
+        <a href="{{ url_for('dashboard.dashboard_links.create_full') }}" class="{% if request.endpoint == 'dashboard.dashboard_links.create_full' %}active{% endif %}"><i class="fa-solid fa-pen-ruler"></i>Link Studio</a>
+        <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}" class="{% if 'dashboard_ai' in (request.endpoint or '') %}active{% endif %}"><i class="fa-solid fa-brain"></i>AI Analyst</a>
+        <a href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}" class="{% if request.endpoint == 'dashboard.dashboard_stats.cross_tracking' %}active{% endif %}"><i class="fa-solid fa-fingerprint"></i>Cross Tracking</a>
+        <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="{% if request.endpoint in ['dashboard.dashboard_stats.global_timeline', 'dashboard.dashboard_stats.global_search', 'dashboard.dashboard_stats.stats', 'dashboard.dashboard_stats.device_profile'] %}active{% endif %}"><i class="fa-solid fa-chart-line"></i>Global Intel</a>
+        <a href="{{ url_for('dashboard.dashboard_stats.graph') }}" class="{% if request.endpoint == 'dashboard.dashboard_stats.graph' %}active{% endif %}"><i class="fa-solid fa-diagram-project"></i>Grafo</a>
+      </nav>
+      <div class="v3-right">
+        <button class="v3-menu-btn" type="button" data-menu-toggle="more"><i class="fa-solid fa-ellipsis"></i><span>More</span></button>
+        <div class="v3-dropdown" id="more-menu">
+          <a href="{{ url_for('dashboard.dashboard_links.settings') }}"><i class="fa-solid fa-sliders"></i>Settings</a>
+          <a href="{{ url_for('dashboard.dashboard_security.security_settings') }}"><i class="fa-solid fa-shield-halved"></i>Security</a>
+          <a href="{{ url_for('dashboard.dashboard_leads.leads_list') }}"><i class="fa-solid fa-users"></i>Leads</a>
+        </div>
+        <div class="theme-pill" role="group" aria-label="Theme">
+          <button class="theme-opt" type="button" data-theme-choice="light" title="Light"><i class="fa-regular fa-sun"></i></button>
+          <button class="theme-opt" type="button" data-theme-choice="dark" title="Dark"><i class="fa-regular fa-moon"></i></button>
+          <button class="theme-opt" type="button" data-theme-choice="system" title="System"><i class="fa-solid fa-circle-half-stroke"></i></button>
+        </div>
+        <button class="v3-avatar-btn" type="button" data-menu-toggle="avatar" aria-label="Account"><i class="fa-solid fa-user"></i></button>
+        <div class="v3-dropdown" id="avatar-menu">
+          <div class="muted mono" style="padding:8px 10px;border-bottom:1px solid var(--border);margin-bottom:4px;">{{ current_user_email() or 'Supabase user' }}</div>
+          <a href="{{ url_for('dashboard.dashboard_links.settings') }}"><i class="fa-solid fa-gear"></i>Settings</a>
+          <a href="{{ url_for('auth.logout') }}"><i class="fa-solid fa-arrow-right-from-bracket"></i>Logout</a>
+        </div>
+      </div>
+    </header>
+    {% endif %}
 
-            <nav class="nav-menu">
-                <a href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.dashboard_home' %}active{% endif %}">
-                    <i class="fa-solid fa-gauge-high"></i>
-                    Command Center
-                </a>
-                <a href="{{ url_for('dashboard.dashboard_links.links') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.links' %}active{% endif %}">
-                    <i class="fa-solid fa-link"></i>
-                    Campaigns
-                </a>
-                <a href="{{ url_for('dashboard.dashboard_leads.leads_list') }}" class="nav-item {% if 'dashboard_leads' in (request.endpoint or '') %}active{% endif %}">
-                    <i class="fa-solid fa-users"></i>
-                    Leads
-                </a>
-                <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}" class="nav-item {% if 'dashboard_ai' in request.endpoint %}active{% endif %}">
-                    <i class="fa-solid fa-brain"></i>
-                    AI Analyst
-                </a>
-                <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="nav-item {% if request.endpoint in ['dashboard.dashboard_stats.global_timeline', 'dashboard.dashboard_stats.global_search', 'dashboard.dashboard_stats.stats', 'dashboard.dashboard_stats.device_profile'] %}active{% endif %}">
-                    <i class="fa-solid fa-chart-line"></i>
-                    Global Intel
-                </a>
-                <a href="{{ url_for('dashboard.dashboard_stats.graph') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_stats.graph' %}active{% endif %}">
-                    <i class="fa-solid fa-diagram-project"></i>
-                    Graph
-                </a>
-                <a href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_stats.cross_tracking' %}active{% endif %}">
-                    <i class="fa-solid fa-fingerprint"></i>
-                    Cross Tracking
-                </a>
-                <div style="flex: 1;"></div>
-                <a href="{{ url_for('dashboard.dashboard_links.settings') }}" class="nav-item {% if request.endpoint == 'dashboard.dashboard_links.settings' %}active{% endif %}">
-                    <i class="fa-solid fa-sliders"></i>
-                    Settings
-                </a>
-                <a href="{{ url_for('dashboard.dashboard_security.security_settings') }}" class="nav-item {% if 'dashboard_security' in request.endpoint or 'dashboard_passkey' in request.endpoint %}active{% endif %}">
-                    <i class="fa-solid fa-shield-halved"></i>
-                    Security
-                </a>
-                <a href="{{ url_for('auth.logout') }}" class="nav-item" style="color: var(--accent-danger);">
-                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
-                    Logout
-                </a>
-            </nav>
-        </aside>
-        {% endif %}
-        {% if not hide_nav %}
-        <nav class="mobile-nav">
-          <a href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}"
-             class="mobile-nav-item {% if request.endpoint == 'dashboard.dashboard_links.dashboard_home' %}active{% endif %}">
-            <i class="fa-solid fa-gauge-high"></i><span>Home</span>
-          </a>
-          <a href="{{ url_for('dashboard.dashboard_links.links') }}"
-             class="mobile-nav-item {% if request.endpoint == 'dashboard.dashboard_links.links' %}active{% endif %}">
-            <i class="fa-solid fa-link"></i><span>Links</span>
-          </a>
-          <a href="{{ url_for('dashboard.dashboard_links.create_full') }}"
-             class="mobile-nav-item mobile-nav-fab">
-            <i class="fa-solid fa-plus"></i>
-          </a>
-          <a href="{{ url_for('dashboard.dashboard_ai.ai_console') }}"
-             class="mobile-nav-item {% if 'dashboard_ai' in (request.endpoint or '') %}active{% endif %}">
-            <i class="fa-solid fa-brain"></i><span>AI</span>
-          </a>
-          <a href="{{ url_for('dashboard.dashboard_leads.leads_list') }}"
-             class="mobile-nav-item {% if 'dashboard_leads' in (request.endpoint or '') %}active{% endif %}">
-            <i class="fa-solid fa-users"></i><span>Leads</span>
-          </a>
-        </nav>
-        {% endif %}
+    <main class="v3-main" {% if hide_nav %}style="min-height:100vh;display:grid;place-items:center;"{% endif %}>
+      {% if not hide_nav %}
+      <div class="v3-page-head">
+        <div>
+          <p class="eyebrow">{% block breadcrumb %}Dashboard{% endblock %}</p>
+        </div>
+        <form action="{{ url_for('dashboard.dashboard_stats.global_search') }}" method="GET" style="margin:0;">
+          <input type="search" name="q" class="v3-search" placeholder="Search IP, email, slug, fingerprint..." value="{{ request.args.get('q', '') }}">
+        </form>
+      </div>
+      {% endif %}
 
-        <main class="main-content" {% if hide_nav %}style="margin-left:0;width:100%;"{% endif %}>
-            {% if not hide_nav %}
-            <header class="top-bar">
-                <div class="breadcrumbs">
-                    {% block breadcrumb %}Dashboard{% endblock %}
-                </div>
-                <button class="hamburger-btn" id="sidebarToggle" aria-label="Menu">
-                    <i class="fa-solid fa-bars"></i>
-                </button>
-                <div class="top-actions">
-                    <form action="{{ url_for('dashboard.dashboard_stats.global_search') }}" method="GET" style="margin:0;">
-                        <input type="text" name="q" class="search-bar" placeholder="Search IP, email, slug, fingerprint..." value="{{ request.args.get('q', '') }}">
-                    </form>
-                    <div style="width:34px;height:34px;border-radius:50%;background:var(--accent-primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;">
-                        {% if current_user.is_authenticated %}
-                        {{ (current_user.username or current_user.email)[0].upper() }}
-                        {% else %}
-                        ?
-                        {% endif %}
-                    </div>
-                </div>
-            </header>
-            {% endif %}
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="v3-flash">
+        {% for category, message in messages %}
+        <div class="badge {{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warn' }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
 
-            <div class="page-scroll">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                {% for category, message in messages %}
-                <div class="badge badge-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warning' }}" style="display:block;width:fit-content;margin-bottom:1rem;">
-                    {{ message }}
-                </div>
-                {% endfor %}
-                {% endif %}
-                {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
 
-                {% block content %}{% endblock %}
-            </div>
-        </main>
-    </div>
-    {% block scripts %}{% endblock %}
-    <script nonce="{{ csp_nonce|default('') }}">
-    (function(){
-      const btn=document.getElementById('sidebarToggle');
-      const overlay=document.getElementById('sidebarOverlay');
-      const sidebar=document.querySelector('.sidebar');
-      if(!btn||!sidebar||!overlay)return;
-      btn.addEventListener('click',function(){
-        sidebar.classList.toggle('open');
-        overlay.classList.toggle('active');
+    {% if not hide_nav %}
+    <button class="chat-bubble" type="button" aria-label="AI Analyst" onclick="location.href='{{ url_for('dashboard.dashboard_ai.ai_console') }}'"><i class="fa-solid fa-message"></i></button>
+    <div class="toast-stack" id="toast-stack"></div>
+    {% endif %}
+  </div>
+  <script src="{{ url_for('static', filename='js/urltrack.js') }}" nonce="{{ csp_nonce|default('') }}"></script>
+  <script nonce="{{ csp_nonce|default('') }}">
+  (function(){
+    const closeAll = () => document.querySelectorAll('.v3-dropdown.open').forEach(el => el.classList.remove('open'));
+    document.querySelectorAll('[data-menu-toggle]').forEach(btn => {
+      btn.addEventListener('click', function(event) {
+        event.stopPropagation();
+        const target = document.getElementById(this.dataset.menuToggle + '-menu');
+        const wasOpen = target && target.classList.contains('open');
+        closeAll();
+        if (target && !wasOpen) target.classList.add('open');
       });
-      overlay.addEventListener('click',function(){
-        sidebar.classList.remove('open');
-        overlay.classList.remove('active');
-      });
-      sidebar.querySelectorAll('.nav-item').forEach(function(item){
-        item.addEventListener('click',function(){
-          sidebar.classList.remove('open');
-          overlay.classList.remove('active');
-        });
-      });
-    })();
-    </script>
+    });
+    document.addEventListener('click', closeAll);
+    function applyTheme(choice) {
+      choice = ['light', 'dark', 'system'].includes(choice) ? choice : 'system';
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const resolved = choice === 'system' ? (prefersDark ? 'dark' : 'light') : choice;
+      document.documentElement.dataset.themeChoice = choice;
+      document.documentElement.dataset.theme = resolved;
+      localStorage.setItem('urltrack-theme', choice);
+      localStorage.setItem('urltrack-theme-choice', choice);
+      document.querySelectorAll('.theme-opt').forEach(el => el.classList.toggle('active', el.dataset.themeChoice === choice));
+    }
+    document.querySelectorAll('.theme-opt').forEach(el => el.addEventListener('click', () => applyTheme(el.dataset.themeChoice)));
+    applyTheme(document.documentElement.dataset.themeChoice || 'system');
+  })();
+  </script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

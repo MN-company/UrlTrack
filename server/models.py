@@ -3,7 +3,6 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask_login import UserMixin
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -264,7 +263,7 @@ class Lead(DatabaseModel):
     label: Mapped[Optional[str]] = mapped_column(String(128))
 
 
-class User(UserMixin, DatabaseModel):
+class User(DatabaseModel):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     username: Mapped[str] = mapped_column(String(80), default="")
@@ -275,6 +274,21 @@ class User(UserMixin, DatabaseModel):
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     backup_codes: Mapped[Optional[str]] = mapped_column(Text)
     passkey_credentials: Mapped[Optional[str]] = mapped_column(Text)
+
+    @property
+    def is_authenticated(self) -> bool:
+        return True
+
+    @property
+    def is_active(self) -> bool:
+        return True
+
+    @property
+    def is_anonymous(self) -> bool:
+        return False
+
+    def get_id(self) -> str:
+        return str(self.id)
 
     @property
     def passkeys(self) -> List[Dict[str, Any]]:

@@ -40,13 +40,20 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _database_url() -> str:
+    uri = os.getenv("DATABASE_URL", DEFAULT_DB_URI)
+    if uri.startswith("postgres://"):
+        uri = uri.replace("postgres://", "postgresql://", 1)
+    return uri
+
+
 _load_dotenv()
 
 
 @dataclass(frozen=True)
 class Config:
-    SECRET_KEY: str = os.environ["SECRET_KEY"]
-    DATABASE_URL: str = os.getenv("DATABASE_URL", DEFAULT_DB_URI)
+    SECRET_KEY: str = os.environ.get("SECRET_KEY", os.urandom(32).hex())
+    DATABASE_URL: str = _database_url()
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     SERVER_URL: str = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
@@ -58,6 +65,9 @@ class Config:
     TURNSTILE_SECRET_KEY: str = os.getenv("TURNSTILE_SECRET_KEY", "")
     THUMBMARK_API_KEY: str = os.getenv("THUMBMARK_API_KEY", "")
     THUMBMARK_API_URL: str = os.getenv("THUMBMARK_API_URL", "https://api.thumbmarkjs.com/thumbmark")
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+    SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     TRUST_PROXY_HEADERS: bool = _bool_env("TRUST_PROXY_HEADERS", False)
     ANONYMIZE_IP: bool = _bool_env("ANONYMIZE_IP", True)
     REQUIRE_CONSENT: bool = _bool_env("REQUIRE_CONSENT", False)
@@ -73,7 +83,7 @@ class Config:
     RATE_LIMIT_AUTH: str = os.getenv("RATE_LIMIT_AUTH", "10 per minute")
     MAX_CONTENT_LENGTH: int = _int_env("MAX_CONTENT_LENGTH", 1_048_576)
     CACHE_DEFAULT_TIMEOUT: int = _int_env("CACHE_DEFAULT_TIMEOUT", 60)
-    SESSION_COOKIE_SECURE: bool = _bool_env("SESSION_COOKIE_SECURE", False)
+    SESSION_COOKIE_SECURE: bool = _bool_env("SESSION_COOKIE_SECURE", True)
     SESSION_COOKIE_HTTPONLY: bool = True
     SESSION_COOKIE_SAMESITE: str = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
     SKIP_BACKGROUND_WORKER: bool = _bool_env("SKIP_BACKGROUND_WORKER", False)
@@ -83,7 +93,7 @@ class Config:
     MALICIOUS_IP_MIN_COUNT: int = _int_env("MALICIOUS_IP_MIN_COUNT", 1000)
     SMART_FOLLOWUP_HOURS: int = _int_env("SMART_FOLLOWUP_HOURS", 48)
     BEACON_WAIT_SECONDS: int = _int_env("BEACON_WAIT_SECONDS", 3)
-    FINGERPRINT_SECRET: str = os.getenv("FINGERPRINT_SECRET", os.environ["SECRET_KEY"])
+    FINGERPRINT_SECRET: str = os.getenv("FINGERPRINT_SECRET", SECRET_KEY)
     RESERVED_SLUGS: FrozenSet[str] = frozenset(
         {
             "dashboard",
@@ -132,6 +142,9 @@ class Config:
             "TURNSTILE_SECRET_KEY": config.TURNSTILE_SECRET_KEY,
             "THUMBMARK_API_KEY": config.THUMBMARK_API_KEY,
             "THUMBMARK_API_URL": config.THUMBMARK_API_URL,
+            "SUPABASE_URL": config.SUPABASE_URL,
+            "SUPABASE_ANON_KEY": config.SUPABASE_ANON_KEY,
+            "SUPABASE_SERVICE_ROLE_KEY": config.SUPABASE_SERVICE_ROLE_KEY,
             "TRUST_PROXY_HEADERS": config.TRUST_PROXY_HEADERS,
             "ANONYMIZE_IP": config.ANONYMIZE_IP,
             "VISIT_RETENTION_DAYS": config.VISIT_RETENTION_DAYS,

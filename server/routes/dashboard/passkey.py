@@ -3,7 +3,6 @@ import json
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
-from flask_login import current_user, login_required
 from webauthn import generate_registration_options, options_to_json, verify_registration_response
 from webauthn.helpers.cose import COSEAlgorithmIdentifier
 from webauthn.helpers.structs import (
@@ -13,6 +12,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
+from ...auth_middleware import current_local_user, login_required
 from ...config import Config
 from ...extensions import db
 from ...models import User
@@ -26,10 +26,19 @@ def _passkey_rp_id() -> str:
     return Config.SERVER_URL.replace("https://", "").replace("http://", "").split(":")[0].split("/")[0]
 
 
+def _current_dashboard_user():
+    user = current_local_user()
+    if user is None:
+        return None
+    return user
+
+
 @bp.route("/passkey/register/options", methods=["POST"])
 @login_required
 def passkey_register_options():
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return jsonify({"error": "Supabase session is not linked to a local security profile"}), 400
     existing_credentials = []
     for item in user.passkeys:
         try:
@@ -80,7 +89,9 @@ def passkey_register_verify():
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 400
 
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return jsonify({"status": "error", "message": "Supabase session is not linked to a local security profile"}), 400
     credentials = safe_json(user.passkey_credentials, []) or []
     credentials.append(
         {
@@ -100,14 +111,18 @@ def passkey_register_verify():
 @bp.route("/passkey/list")
 @login_required
 def passkey_list():
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return jsonify([])
     return jsonify(user.passkeys)
 
 
 @bp.route("/passkey/delete/<credential_id>", methods=["POST"])
 @login_required
 def passkey_delete(credential_id):
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return jsonify({"success": False, "error": "Supabase session is not linked to a local security profile"}), 400
     credentials = [item for item in user.passkeys if item.get("id") != credential_id]
     user.passkey_credentials = json.dumps(credentials)
     db.session.commit()

@@ -7,9 +7,9 @@ import bcrypt
 import pyotp
 import qrcode
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
-from flask_login import current_user, login_required
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from ...auth_middleware import current_local_user, login_required
 from ...extensions import db
 from ...models import SetupState, User
 from ...utils import sanitize
@@ -27,10 +27,19 @@ def _setup_state() -> SetupState:
     return state
 
 
+def _current_dashboard_user():
+    user = current_local_user()
+    if user is None:
+        flash("Your Supabase session is not linked to a local security profile yet.", "error")
+    return user
+
+
 @bp.route("/security")
 @login_required
 def security_settings():
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return redirect(url_for("auth.login"))
     return render_template(
         "security_settings.html",
         user=user,
@@ -43,7 +52,9 @@ def security_settings():
 @bp.route("/security/2fa/setup")
 @login_required
 def setup_2fa():
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return redirect(url_for("auth.login"))
     if user.totp_enabled:
         flash("2FA is already enabled.", "warning")
         return redirect(url_for("dashboard.dashboard_security.security_settings"))
@@ -73,7 +84,9 @@ def setup_2fa():
 @bp.route("/security/2fa/verify_setup", methods=["POST"])
 @login_required
 def verify_2fa_setup():
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return redirect(url_for("auth.login"))
     secret = session.get("temp_totp_secret")
     if not secret:
         flash("Session expired. Please start setup again.", "error")
@@ -111,7 +124,9 @@ def show_backup_codes():
 @bp.route("/security/2fa/regenerate_backup", methods=["POST"])
 @login_required
 def regenerate_backup_codes():
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return redirect(url_for("auth.login"))
     if not user.totp_enabled:
         flash("2FA is not enabled.", "error")
         return redirect(url_for("dashboard.dashboard_security.security_settings"))
@@ -129,7 +144,9 @@ def regenerate_backup_codes():
 @bp.route("/security/2fa/disable", methods=["POST"])
 @login_required
 def disable_2fa():
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return redirect(url_for("auth.login"))
     password = request.form.get("password", "")
     if not check_password_hash(user.password_hash, password):
         flash("Incorrect password.", "error")
@@ -146,7 +163,9 @@ def disable_2fa():
 @bp.route("/security/password", methods=["POST"])
 @login_required
 def change_password():
-    user = db.session.get(User, current_user.id)
+    user = _current_dashboard_user()
+    if user is None:
+        return redirect(url_for("auth.login"))
     current_password = request.form.get("current_password", "")
     new_password = request.form.get("new_password", "")
     confirm_password = request.form.get("confirm_password", "")

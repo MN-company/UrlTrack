@@ -2,8 +2,8 @@ import json
 from datetime import datetime
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
-from flask_login import login_required
 
+from ...auth_middleware import login_required
 from ...extensions import db
 from ...models import Lead, Visit
 from ...services.scoring import apply_visit_scoring
