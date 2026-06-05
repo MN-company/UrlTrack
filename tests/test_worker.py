@@ -26,6 +26,25 @@ def test_send_telegram_text_falls_back_to_plain(monkeypatch):
     assert "\\" not in calls[1]["json"]["text"]
 
 
+def test_fire_webhook_uses_urltrack_signature_header(monkeypatch):
+    from server import worker
+
+    captured = {}
+
+    def fake_post(url, data, headers, timeout):
+        captured["url"] = url
+        captured["data"] = data
+        captured["headers"] = headers
+        captured["timeout"] = timeout
+
+    monkeypatch.setattr(worker.requests, "post", fake_post)
+
+    worker._fire_webhook("https://hooks.example/ingest", "secret", {"visit_id": 123})
+
+    assert captured["headers"]["X-UrlTrack-Signature"]
+    assert "X-UlrTrack-Signature" not in captured["headers"]
+
+
 def test_handle_task_preserves_existing_vpn_flags(app, monkeypatch):
     from server import worker
     from server.extensions import db

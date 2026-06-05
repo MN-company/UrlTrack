@@ -8,8 +8,9 @@ from flask import Blueprint, abort, current_app, make_response, redirect, render
 from user_agents import parse
 
 from ..config import Config
-from ..extensions import cache, db, limiter, log_queue
+from ..extensions import cache, csrf, db, limiter, log_queue
 from ..models import Link, User, Visit
+from ..services.thumbmark import store_thumbmark_payload
 from ..utils import (
     anonymize_ip,
     generate_slug,
@@ -22,6 +23,7 @@ from ..utils import (
     should_require_consent,
     sign_visit_token,
     validate_email_strict,
+    verify_visit_token,
     verify_turnstile,
 )
 from ..validators import get_client_ip, normalize_destination_url
@@ -68,7 +70,7 @@ _CLOUD_KEYWORDS = (
 
 @bp.route("/", methods=["GET"])
 def index():
-    if Config.ADMIN_BOOTSTRAP_ENABLED and User.query.count() == 0:
+    if Config.ADMIN_BOOTSTRAP_ENABLED and not Config.SUPABASE_URL and User.query.count() == 0:
         return redirect(url_for("auth.setup"))
     return redirect(url_for("auth.login"))
 
@@ -101,7 +103,7 @@ def _visit_from_form(value):
 def _build_public_csp(nonce: str) -> str:
     return (
         "default-src 'self'; "
-        f"script-src 'self' 'nonce-{nonce}' https://challenges.cloudflare.com; "
+        f"script-src 'self' 'nonce-{nonce}' https://challenges.cloudflare.com https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
         "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
         "img-src 'self' data: blob: https://flagcdn.com https://*.gravatar.com; "
@@ -120,6 +122,41 @@ def _public_response(template_name: str, status: int = 200, **kwargs):
         response = make_response(render_template(template_name, **kwargs))
     response.status_code = status
     return response
+
+
+def enrich_visit_async(visit_id: int) -> None:
+    try:
+        log_queue.put({"type": "enrich_visit", "visit_id": visit_id, "notify": False, "thumbmark_api": True})
+    except Exception:
+        pass
+
+
+@csrf.exempt
+@bp.route("/fp", methods=["POST"])
+@limiter.limit("60 per minute")
+def collect_fingerprint():
+    data = request.get_json(silent=True) or {}
+    visit_id = verify_visit_token(data.get("visit_token") or data.get("token"), Config.VISIT_TOKEN_TTL_SECONDS)
+    if visit_id is None and not Config.REQUIRE_VISIT_TOKEN:
+        try:
+            visit_id = int(data.get("visit_id"))
+        except (TypeError, ValueError):
+            visit_id = None
+
+    visit = db.session.get(Visit, visit_id) if visit_id else None
+    if visit is None:
+        return "", 204
+
+    try:
+        store_thumbmark_payload(visit, data)
+        visit.beacon_received_at = datetime.utcnow()
+        visit.visit_complete = True
+        db.session.commit()
+        enrich_visit_async(visit.id)
+    except Exception as exc:
+        print(f"Fingerprint collect error: {exc}")
+        db.session.rollback()
+    return "", 204
 
 
 def _detect_vpn_or_cloud(geo: dict) -> bool:

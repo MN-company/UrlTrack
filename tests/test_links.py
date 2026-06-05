@@ -101,6 +101,69 @@ def test_qr_missing_slug_returns_404(app, client, auth):
     assert response.status_code == 404
 
 
+def test_qr_code_supports_svg_and_custom_png(app, client, auth):
+    from server.extensions import db
+    from server.models import Link
+
+    auth.login()
+    with app.app_context():
+        link = Link(slug="qr-custom", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+
+    png_response = client.get(
+        "/dashboard/qr/qr-custom?fg_color=%2300C853&bg_color=%23ffffff&gradient_color=%2300BCD4&dot_style=circle"
+    )
+    assert png_response.status_code == 200
+    assert png_response.headers["Content-Type"] == "image/png"
+    assert png_response.data.startswith(b"\x89PNG")
+
+    svg_response = client.get("/dashboard/qr/qr-custom?format=svg&transparent_bg=1")
+    assert svg_response.status_code == 200
+    assert svg_response.headers["Content-Type"] == "image/svg+xml"
+    assert b"<svg" in svg_response.data
+
+
+def test_qr_save_persists_config(app, client, auth):
+    import json
+
+    from server.extensions import db
+    from server.models import Link
+
+    auth.login()
+    with app.app_context():
+        link = Link(slug="qr-save", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+
+    response = client.post(
+        "/dashboard/qr_save/qr-save",
+        data={
+            "fg_color": "#111111",
+            "bg_color": "#eeeeee",
+            "enable_gradient": "on",
+            "gradient_color": "#00C853",
+            "gradient_direction": "vertical",
+            "error_correction": "Q",
+            "dot_style": "rounded",
+            "transparent_bg": "on",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+
+    with app.app_context():
+        link = Link.query.filter_by(slug="qr-save").first()
+        config = json.loads(link.qr_config)
+        assert config["fg_color"] == "#111111"
+        assert config["bg_color"] == "#EEEEEE"
+        assert config["gradient_color"] == "#00C853"
+        assert config["gradient_direction"] == "vertical"
+        assert config["error_correction"] == "Q"
+        assert config["dot_style"] == "rounded"
+        assert config["transparent_bg"] is True
+
+
 def test_edit_page_exposes_country_picker_and_safe_url(app, client, auth):
     from server.extensions import db
     from server.models import Link

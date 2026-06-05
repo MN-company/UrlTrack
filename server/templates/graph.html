@@ -12,7 +12,7 @@
         <div>
             <span class="card-title"><i class="fa-solid fa-diagram-project"></i> Visitor Connection Graph</span>
             <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">
-                Cross-signal links between campaigns, emails, IPs, canvas hashes, ETags, and composite fingerprints.
+                Cross-signal links between visitors, Thumbmark IDs, emails, browser fingerprints, devices, and visits.
             </div>
         </div>
         <a href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}" class="btn btn-ghost">Cross Tracking</a>
@@ -31,14 +31,29 @@ const GRAPH_DATA = {{ graph_data|safe }};
     const root = document.getElementById("graph-root");
     const width = root.clientWidth || 1200;
     const height = root.clientHeight || 720;
-    const colorMap = {
-        hash: "#3b82f6",
-        composite: "#14b8a6",
-        etag: "#a855f7",
-        ip: "#64748b",
-        slug: "#22c55e",
-        email: "#f97316"
+    const edges = GRAPH_DATA.edges || GRAPH_DATA.links || [];
+    const iconText = {
+        visitor: "P",
+        email: "@",
+        thumbmark_visitor_id: "TM",
+        thumbmark_hash: "FP",
+        canvas_hash: "CV",
+        audio_hash: "AU",
+        webgl_hash: "GL",
+        fonts_hash: "FN",
+        speech_hash: "SP",
+        hardware_profile: "HW",
+        screen_profile: "SC",
+        timezone: "TZ",
+        ip_address: "IP",
+        webrtc_ip: "LAN",
+        visit: "V"
     };
+
+    if (!GRAPH_DATA.nodes.length) {
+        root.innerHTML = "<div style=\"height:100%;display:grid;place-items:center;color:#94a3b8;font-family:Inter,Arial,sans-serif;\">No identity graph data yet</div>";
+        return;
+    }
 
     const svg = d3
         .select(root)
@@ -60,9 +75,24 @@ const GRAPH_DATA = {{ graph_data|safe }};
         .append("g")
         .attr("stroke", "rgba(148,163,184,0.35)")
         .selectAll("line")
-        .data(GRAPH_DATA.links)
+        .data(edges)
         .join("line")
-        .attr("stroke-width", function (d) { return Math.max(1, Math.min(4, d.weight || 1)); });
+        .attr("stroke-width", function (d) { return Math.max(1, Math.min(5, (d.weight || 1) / 5)); })
+        .attr("stroke-dasharray", function (d) { return d.dashed ? "5 5" : null; });
+
+    const linkLabel = zoomLayer
+        .append("g")
+        .selectAll("text")
+        .data(edges)
+        .join("text")
+        .text(function (d) {
+            const weight = d.weight ? " " + d.weight : "";
+            return (d.label || "edge") + weight;
+        })
+        .attr("fill", "rgba(226,232,240,0.72)")
+        .style("font-size", "10px")
+        .style("font-family", "JetBrains Mono, monospace")
+        .style("pointer-events", "none");
 
     const node = zoomLayer
         .append("g")
@@ -78,10 +108,24 @@ const GRAPH_DATA = {{ graph_data|safe }};
 
     node
         .append("circle")
-        .attr("r", function (d) { return d.type === "hash" ? 10 : 8; })
-        .attr("fill", function (d) { return colorMap[d.type] || "#94a3b8"; })
+        .attr("r", function (d) {
+            const base = d.type === "visitor" ? 13 : d.type === "visit" ? 7 : 9;
+            return Math.max(base, Math.min(24, base + Math.sqrt(d.occurrence_count || 1) * 2));
+        })
+        .attr("fill", function (d) { return d.color || "#94a3b8"; })
         .attr("stroke", "#0f172a")
         .attr("stroke-width", 1.5);
+
+    node
+        .append("text")
+        .text(function (d) { return iconText[d.type] || ""; })
+        .attr("text-anchor", "middle")
+        .attr("y", 3)
+        .attr("fill", "#0f172a")
+        .style("font-size", "8px")
+        .style("font-weight", "800")
+        .style("font-family", "Inter, Arial, sans-serif")
+        .style("pointer-events", "none");
 
     node
         .append("text")
@@ -96,10 +140,10 @@ const GRAPH_DATA = {{ graph_data|safe }};
 
     const simulation = d3
         .forceSimulation(GRAPH_DATA.nodes)
-        .force("link", d3.forceLink(GRAPH_DATA.links).id(function (d) { return d.id; }).distance(75))
-        .force("charge", d3.forceManyBody().strength(-210))
+        .force("link", d3.forceLink(edges).id(function (d) { return d.id; }).distance(95))
+        .force("charge", d3.forceManyBody().strength(-250))
         .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collide", d3.forceCollide().radius(28));
+        .force("collide", d3.forceCollide().radius(34));
 
     simulation.on("tick", function () {
         link
@@ -107,6 +151,10 @@ const GRAPH_DATA = {{ graph_data|safe }};
             .attr("y1", function (d) { return d.source.y; })
             .attr("x2", function (d) { return d.target.x; })
             .attr("y2", function (d) { return d.target.y; });
+
+        linkLabel
+            .attr("x", function (d) { return (d.source.x + d.target.x) / 2; })
+            .attr("y", function (d) { return (d.source.y + d.target.y) / 2; });
 
         node.attr("transform", function (d) {
             return "translate(" + d.x + "," + d.y + ")";

@@ -164,3 +164,36 @@ def test_cross_tracking_filters_by_min_risk(app, client, auth):
     assert response.status_code == 200
     assert b"hot@example.com" in response.data
     assert b"safe@example.com" not in response.data
+
+
+def test_identity_graph_renders_thumbmark_signal_nodes(app, client, auth):
+    from server.extensions import db
+    from server.models import Link, Visit
+    from server.services.scoring import apply_visit_scoring
+
+    auth.login()
+    with app.app_context():
+        link = Link(slug="graph-thumbmark", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        visit = Visit(
+            link_id=link.id,
+            ip_address="9.9.9.9",
+            thumbmark_hash="graph-thumbmark-hash",
+            fp_canvas_hash="graph-canvas",
+            fp_audio_hash="graph-audio",
+            fp_webgl_hash="graph-webgl",
+            identity_confidence=80,
+        )
+        db.session.add(visit)
+        db.session.commit()
+        apply_visit_scoring(visit)
+        db.session.commit()
+
+    response = client.get("/dashboard/graph")
+
+    assert response.status_code == 200
+    assert b"thumbmark_hash" in response.data
+    assert b"canvas_hash" in response.data
+    assert b"has fingerprint" in response.data
+    assert b"occurrence_count" in response.data

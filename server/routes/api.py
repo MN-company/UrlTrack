@@ -7,6 +7,7 @@ from ..config import Config
 from ..extensions import csrf, db, limiter, log_queue
 from ..models import Visit
 from ..services.scoring import apply_visit_scoring
+from ..services.thumbmark import store_thumbmark_payload
 from ..utils import safe_json, sanitize, verify_visit_token
 
 
@@ -103,6 +104,7 @@ def receive_beacon():
         if visit is None:
             return "Not found", 404
 
+        store_thumbmark_payload(visit, data)
         visit.screen_res = sanitize(data.get("screen_res"), 32) or visit.screen_res
         screen_depth = _coerce_int(data.get("screen_depth"), 1, 128)
         if screen_depth is not None:

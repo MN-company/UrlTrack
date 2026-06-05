@@ -4,8 +4,8 @@ import json
 from io import StringIO
 
 from flask import Blueprint, make_response
-from flask_login import login_required
 
+from ...auth_middleware import login_required
 from ...extensions import limiter
 from ...models import Link, Visit
 

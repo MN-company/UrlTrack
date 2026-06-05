@@ -1,45 +1,157 @@
 {% extends "base.html" %}
 
+{% block breadcrumb %}Workspace / QR Editor{% endblock %}
+
 {% block content %}
-<div class="card" style="max-width: 600px; margin: 0 auto; text-align: center;">
-    <h2>QR Code: <span class="text-accent">/{{ link.slug }}</span></h2>
-    <div style="margin: 30px 0;">
-        <img id="qr-img" src="/dashboard/qr/{{ link.slug }}?scale=10"
-            style="border: 5px solid white; border-radius: 8px;">
+<header class="page-header">
+  <div>
+    <p class="eyebrow">QR code</p>
+    <h1 class="mono">/{{ link.slug }}</h1>
+  </div>
+  <div class="actions">
+    <a href="{{ url_for('dashboard.dashboard_links.links') }}" class="btn ghost"><i class="fa-solid fa-arrow-left"></i>Projects</a>
+    <a href="{{ url_for('public.redirect_to_url', slug=link.slug) }}" target="_blank" class="btn ghost"><i class="fa-solid fa-arrow-up-right-from-square"></i>Open</a>
+  </div>
+</header>
+
+<section class="qr-editor-grid">
+  <div class="panel pad">
+    <div class="qr-preview-stage">
+      <img id="qr-preview"
+        src="{{ url_for('dashboard.dashboard_links.qr_code', slug=link.slug, scale=10, format='png') }}"
+        alt="QR code preview"
+        style="max-width:min(100%,360px);border-radius:10px;background:#fff;">
     </div>
-
-    <div class="form-group" style="text-align: left; max-width: 300px; margin: 0 auto;">
-        <label>Color</label>
-        <input type="color" id="qr-color" value="#000000" onchange="updateQR()">
-
-        <label style="margin-top: 10px;">Background</label>
-        <input type="color" id="qr-bg" value="#ffffff" onchange="updateQR()">
-
-        <label style="margin-top: 10px;">Logo URL (Optional)</label>
-        <input type="url" id="qr-logo" placeholder="https://..." style="width: 100%; padding: 5px; margin-top: 5px;"
-            onchange="updateQR()">
+    <div class="actions" style="justify-content:center;margin-top:14px">
+      <a id="dl-png" href="#" class="btn primary" download="qr_{{ link.slug }}.png">PNG</a>
+      <a id="dl-png-transp" href="#" class="btn ghost" download="qr_{{ link.slug }}_transparent.png">Transparent PNG</a>
+      <a id="dl-svg" href="#" class="btn ghost" download="qr_{{ link.slug }}.svg">SVG</a>
     </div>
-
-    <div style="margin-top: 30px;">
-        <a href="/dashboard" class="btn-outline">Back</a>
-        <a id="download-btn" href="/dashboard/qr/{{ link.slug }}?scale=10" download="qr_{{ link.slug }}.png"
-            class="btn">DOWNLOAD PNG</a>
+    <div class="muted mono" style="margin-top:12px;word-break:break-all;text-align:center;">
+      {{ link.public_masked_url or request.host_url.rstrip('/') ~ '/' ~ link.slug }}
     </div>
-</div>
+  </div>
 
-<script>
-    function updateQR() {
-        const color = document.getElementById('qr-color').value.replace('#', '');
-        const bg = document.getElementById('qr-bg').value.replace('#', '');
-        const logo = document.getElementById('qr-logo').value;
+  <div class="panel pad">
+    <form method="POST"
+      action="{{ url_for('dashboard.dashboard_links.qr_save', slug=link.slug) }}"
+      enctype="multipart/form-data"
+      id="qr-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid">
+        <div class="field">
+          <label for="fg_color">Foreground</label>
+          <input class="input" type="color" name="fg_color" id="fg_color" value="{{ qr_config.fg_color }}" oninput="livePreview()">
+        </div>
+        <div class="field">
+          <label for="bg_color">Background</label>
+          <input class="input" type="color" name="bg_color" id="bg_color" value="{{ qr_config.bg_color }}" oninput="livePreview()">
+        </div>
+        <div class="field">
+          <label for="gradient_color">Gradient</label>
+          <input class="input" type="color" name="gradient_color" id="gradient_color" value="{{ qr_config.gradient_color or '#00C853' }}" oninput="livePreview()">
+        </div>
+        <div class="field">
+          <label for="gradient_direction">Gradient direction</label>
+          <select class="select" name="gradient_direction" id="gradient_direction" onchange="livePreview()">
+            <option value="diagonal" {% if qr_config.gradient_direction == 'diagonal' %}selected{% endif %}>Diagonal</option>
+            <option value="horizontal" {% if qr_config.gradient_direction == 'horizontal' %}selected{% endif %}>Horizontal</option>
+            <option value="vertical" {% if qr_config.gradient_direction == 'vertical' %}selected{% endif %}>Vertical</option>
+            <option value="radial" {% if qr_config.gradient_direction == 'radial' %}selected{% endif %}>Radial</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="dot_style">Dot style</label>
+          <select class="select" name="dot_style" id="dot_style" onchange="livePreview()">
+            <option value="square" {% if qr_config.dot_style == 'square' %}selected{% endif %}>Square</option>
+            <option value="rounded" {% if qr_config.dot_style == 'rounded' %}selected{% endif %}>Rounded</option>
+            <option value="circle" {% if qr_config.dot_style == 'circle' %}selected{% endif %}>Circle</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="error_correction">Error correction</label>
+          <select class="select" name="error_correction" id="error_correction" onchange="livePreview()">
+            <option value="L" {% if qr_config.error_correction == 'L' %}selected{% endif %}>L - 7%</option>
+            <option value="M" {% if qr_config.error_correction == 'M' %}selected{% endif %}>M - 15%</option>
+            <option value="Q" {% if qr_config.error_correction == 'Q' %}selected{% endif %}>Q - 25%</option>
+            <option value="H" {% if qr_config.error_correction == 'H' %}selected{% endif %}>H - 30%</option>
+          </select>
+        </div>
+      </div>
 
-        let url = `/dashboard/qr/{{ link.slug }}?scale=10&color=${color}&bg=${bg}`;
-        if (logo) {
-            url += `&logo=${encodeURIComponent(logo)}`;
-        }
+      <div class="toggle-list" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px">
+        <label class="toggle {% if qr_config.transparent_bg %}enabled{% endif %}">
+          <div><h3>Transparent background</h3><p>Useful for design overlays.</p></div>
+          <input type="checkbox" name="transparent_bg" id="transparent_bg" {% if qr_config.transparent_bg %}checked{% endif %} onchange="livePreview()">
+        </label>
+        <label class="toggle {% if qr_config.gradient_color %}enabled{% endif %}">
+          <div><h3>Enable gradient</h3><p>Uses the selected second color.</p></div>
+          <input type="checkbox" name="enable_gradient" id="enable_gradient" {% if qr_config.gradient_color %}checked{% endif %} onchange="livePreview()">
+        </label>
+      </div>
 
-        document.getElementById('qr-img').src = url;
-        document.getElementById('download-btn').href = url;
-    }
+      <div class="field" style="margin-top:14px">
+        <label for="logo_file">Logo at center</label>
+        {% if qr_config.logo_path %}
+        <div class="badge info" style="margin-bottom:8px">Logo uploaded</div>
+        <label class="badge warn" style="margin-bottom:8px"><input type="checkbox" name="remove_logo" value="1" onchange="livePreview()"> Remove logo</label>
+        {% endif %}
+        <input class="input" type="file" name="logo_file" id="logo_file" accept=".png,.jpg,.jpeg,.webp,.svg" onchange="onLogoChange()">
+        <p class="muted">PNG, JPG, WEBP or SVG. Logos force H error correction.</p>
+      </div>
+
+      <div class="actions" style="margin-top:18px">
+        <button type="submit" class="btn primary">Save configuration</button>
+        <button type="button" class="btn ghost" onclick="resetDefaults()">Reset</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script nonce="{{ csp_nonce|default('') }}">
+function previewUrl(transparent, fmt) {
+  const fg = document.getElementById("fg_color").value.replace("#", "");
+  const bg = document.getElementById("bg_color").value.replace("#", "");
+  const ec = document.getElementById("error_correction").value;
+  const dot = document.getElementById("dot_style").value;
+  const dir = document.getElementById("gradient_direction").value;
+  const gradEnabled = document.getElementById("enable_gradient").checked;
+  const grad = gradEnabled ? document.getElementById("gradient_color").value.replace("#", "") : "";
+  const transp = transparent || document.getElementById("transparent_bg").checked;
+  const format = fmt || "png";
+  let url = `{{ url_for('dashboard.dashboard_links.qr_code', slug=link.slug) }}?scale=10&format=${format}&fg_color=%23${fg}&bg_color=%23${bg}&error_correction=${ec}&dot_style=${dot}`;
+  if (grad) url += `&gradient_color=%23${grad}&gradient_direction=${dir}`;
+  if (transp) url += "&transparent_bg=1";
+  return url;
+}
+function livePreview() {
+  document.getElementById("qr-preview").src = previewUrl(false, "png");
+  document.getElementById("dl-png").href = previewUrl(false, "png");
+  document.getElementById("dl-png-transp").href = previewUrl(true, "png");
+  document.getElementById("dl-svg").href = previewUrl(false, "svg");
+  document.querySelectorAll(".toggle").forEach((toggle) => {
+    const input = toggle.querySelector("input[type='checkbox']");
+    if (input) toggle.classList.toggle("enabled", input.checked);
+  });
+}
+function onLogoChange() {
+  if (document.getElementById("logo_file").files[0]) {
+    document.getElementById("error_correction").value = "H";
+  }
+  livePreview();
+}
+function resetDefaults() {
+  document.getElementById("fg_color").value = "#000000";
+  document.getElementById("bg_color").value = "#ffffff";
+  document.getElementById("gradient_color").value = "#00C853";
+  document.getElementById("enable_gradient").checked = false;
+  document.getElementById("transparent_bg").checked = false;
+  document.getElementById("error_correction").value = "M";
+  document.getElementById("dot_style").value = "square";
+  livePreview();
+}
+livePreview();
 </script>
 {% endblock %}

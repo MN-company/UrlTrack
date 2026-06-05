@@ -13,7 +13,6 @@ from flask import (
     session,
     url_for,
 )
-from flask_login import current_user, login_required, login_user, logout_user
 from webauthn import (
     generate_authentication_options,
     options_to_json,
@@ -22,9 +21,11 @@ from webauthn import (
 from webauthn.helpers.structs import PublicKeyCredentialDescriptor, UserVerificationRequirement
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from ..auth_middleware import current_user, ensure_local_user, login_required
 from ..config import Config
 from ..extensions import db, limiter
 from ..models import SetupState, User
+from ..supabase_client import get_supabase
 from ..utils import generate_secret_code, sanitize, safe_json
 
 
@@ -49,6 +50,11 @@ def _session_user(value):
         return db.session.get(User, int(value))
     except (TypeError, ValueError):
         return None
+
+
+def _sync_local_user(email: str, password: str = "") -> User:
+    password_hash = generate_password_hash(password) if password else "supabase-auth"
+    return ensure_local_user(email=email, password_hash=password_hash)
 
 
 @bp.route("/setup", methods=["GET", "POST"])
@@ -89,8 +95,12 @@ def setup():
         db.session.commit()
 
         session["setup_secret_code"] = generated_secret
-        login_user(admin, remember=True)
-        return redirect(url_for("auth.show_setup_secret"))
+        try:
+            get_supabase().auth.sign_up({"email": email, "password": password})
+            flash("Admin created. Check Supabase email confirmation if required, then sign in.", "success")
+        except Exception as exc:
+            flash(f"Local admin created, but Supabase signup failed: {exc}", "warning")
+        return redirect(url_for("auth.login"))
 
     return render_template("setup.html", hide_nav=True)
 
@@ -108,31 +118,24 @@ def show_setup_secret():
 @bp.route("/login", methods=["GET", "POST"])
 @limiter.limit(Config.RATE_LIMIT_AUTH)
 def login():
-    if User.query.count() == 0 and Config.ADMIN_BOOTSTRAP_ENABLED:
+    if not Config.SUPABASE_URL and User.query.count() == 0 and Config.ADMIN_BOOTSTRAP_ENABLED:
         return redirect(url_for("auth.setup"))
-    if current_user.is_authenticated:
+    if current_user() is not None:
         return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
     if request.method == "POST":
         if "email" in request.form and "password" in request.form:
             email = sanitize(request.form.get("email"), 255).lower()
             password = request.form.get("password", "")
-            user = User.query.filter_by(email=email).first()
-
-            if user and check_password_hash(user.password_hash, password):
-                if user.totp_enabled or bool(user.passkeys):
-                    session["pending_2fa_user_id"] = user.id
-                    return render_template(
-                        "2fa_verify.html",
-                        email=user.email,
-                        has_passkey=bool(user.passkeys),
-                        hide_nav=True,
-                    )
-                login_user(user, remember=True)
+            try:
+                result = get_supabase().auth.sign_in_with_password({"email": email, "password": password})
+                session["supabase_access_token"] = result.session.access_token
+                session["supabase_refresh_token"] = result.session.refresh_token
+                _sync_local_user(email, password)
                 flash("Login successful.", "success")
                 return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
-
-            flash("Invalid email or password.", "error")
+            except Exception as exc:
+                flash(str(exc), "error")
 
         elif "totp_code" in request.form or "backup_code" in request.form:
             user_id = session.get("pending_2fa_user_id")
@@ -150,9 +153,8 @@ def login():
                 totp = pyotp.TOTP(user.totp_secret or "")
                 if user.totp_enabled and totp.verify(code, valid_window=1):
                     session.pop("pending_2fa_user_id", None)
-                    login_user(user, remember=True)
-                    flash("Login successful.", "success")
-                    return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+                    flash("Use Supabase email/password login for this V3 session.", "warning")
+                    return redirect(url_for("auth.login"))
                 flash("Invalid verification code.", "error")
                 return render_template(
                     "2fa_verify.html",
@@ -174,9 +176,8 @@ def login():
                 user.backup_codes = json.dumps(remaining_codes)
                 db.session.commit()
                 session.pop("pending_2fa_user_id", None)
-                login_user(user, remember=True)
-                flash("Login successful with backup code.", "success")
-                return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+                flash("Use Supabase email/password login for this V3 session.", "warning")
+                return redirect(url_for("auth.login"))
 
             flash("Invalid backup code.", "error")
             return render_template(
@@ -187,6 +188,28 @@ def login():
             )
 
     return render_template("login.html", hide_nav=True)
+
+
+@bp.route("/signup", methods=["GET", "POST"])
+@limiter.limit(Config.RATE_LIMIT_AUTH)
+def signup():
+    if request.method == "POST":
+        email = sanitize(request.form.get("email"), 255).lower()
+        password = request.form.get("password", "")
+        if not email or "@" not in email:
+            flash("A valid email is required.", "error")
+            return render_template("login.html", hide_nav=True, mode="signup")
+        if len(password) < 8:
+            flash("Password must be at least 8 characters long.", "error")
+            return render_template("login.html", hide_nav=True, mode="signup")
+        try:
+            get_supabase().auth.sign_up({"email": email, "password": password})
+            _sync_local_user(email, password)
+            flash("Check your email to confirm the registration, then sign in.", "success")
+            return redirect(url_for("auth.login"))
+        except Exception as exc:
+            flash(str(exc), "error")
+    return render_template("login.html", hide_nav=True, mode="signup")
 
 
 @bp.route("/auth/passkey/options", methods=["POST"])
@@ -260,8 +283,12 @@ def passkey_auth_verify():
     session.pop("webauthn_challenge", None)
     session.pop("webauthn_user_id", None)
     session.pop("pending_2fa_user_id", None)
-    login_user(user, remember=True)
-    return jsonify({"verified": True, "redirect": url_for("dashboard.dashboard_links.dashboard_home")})
+    return jsonify(
+        {
+            "verified": False,
+            "error": "Passkey-only login is disabled in V3. Use Supabase email/password login.",
+        }
+    ), 400
 
 
 @bp.route("/logout")
@@ -271,6 +298,11 @@ def logout():
     session.pop("pending_2fa_user_id", None)
     session.pop("webauthn_challenge", None)
     session.pop("webauthn_user_id", None)
-    logout_user()
+    try:
+        get_supabase().auth.sign_out()
+    except Exception:
+        pass
+    session.pop("supabase_access_token", None)
+    session.pop("supabase_refresh_token", None)
     flash("Logged out.", "success")
     return redirect(url_for("auth.login"))

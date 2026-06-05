@@ -1,8 +1,8 @@
 import json
 
 from flask import Blueprint, Response, jsonify, redirect, render_template, request, stream_with_context, url_for
-from flask_login import login_required
 
+from ...auth_middleware import login_required
 from ...config import Config
 from ...models import Link, Visit
 from ...services.ai_service import AIService

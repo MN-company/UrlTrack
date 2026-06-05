@@ -3,12 +3,13 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
-from flask_login import login_required
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
+from ...auth_middleware import login_required
 from ...extensions import db
-from ...models import Link, Visit
+from ...models import Link, Visit, Visitor
+from ...services.scoring import SIGNAL_WEIGHTS
 from ...utils import safe_json, sanitize
 
 
@@ -36,6 +37,15 @@ def _visit_search_filter(search_term: str):
         Visit.webgl_renderer.ilike(search_term),
         Visit.webgl_vendor.ilike(search_term),
         Visit.fingerprint_composite_v1.ilike(search_term),
+        Visit.thumbmark_hash.ilike(search_term),
+        Visit.thumbmark_visitor_id.ilike(search_term),
+        Visit.fp_canvas_hash.ilike(search_term),
+        Visit.fp_audio_hash.ilike(search_term),
+        Visit.fp_webgl_hash.ilike(search_term),
+        Visit.fp_fonts_hash.ilike(search_term),
+        Visit.fp_screen_profile.ilike(search_term),
+        Visit.fp_hardware_profile.ilike(search_term),
+        Visit.fp_timezone.ilike(search_term),
         Visit.etag.ilike(search_term),
         Visit.review_label.ilike(search_term),
         Visit.match_reasons_json.ilike(search_term),
@@ -101,6 +111,7 @@ def _apply_visit_filters(visit_query, filters: dict):
         visit_query = visit_query.filter(
             db.or_(
                 Visit.fingerprint_composite_v1.isnot(None),
+                Visit.thumbmark_hash.isnot(None),
                 Visit.canvas_hash.isnot(None),
                 Visit.etag.isnot(None),
             )
@@ -459,93 +470,189 @@ def cross_tracking():
 @bp.route("/graph")
 @login_required
 def graph():
-    visits = (
-        Visit.query.options(joinedload(Visit.link))
-        .filter(
-            db.or_(
-                Visit.canvas_hash.isnot(None),
-                Visit.fingerprint_composite_v1.isnot(None),
-                Visit.etag.isnot(None),
-                Visit.email.isnot(None),
-                Visit.ip_address.isnot(None),
-            )
+    node_meta = {
+        "visitor": ("#00C853", "person"),
+        "email": ("#FF6D00", "email"),
+        "thumbmark_visitor_id": ("#00BCD4", "fingerprint"),
+        "thumbmark_hash": ("#26C6DA", "fingerprint"),
+        "canvas_hash": ("#AB47BC", "brush"),
+        "audio_hash": ("#EC407A", "music_note"),
+        "webgl_hash": ("#7E57C2", "cube"),
+        "fonts_hash": ("#5C6BC0", "font_download"),
+        "speech_hash": ("#29B6F6", "record_voice"),
+        "hardware_profile": ("#FFA726", "memory"),
+        "screen_profile": ("#FFCA28", "monitor"),
+        "timezone": ("#66BB6A", "schedule"),
+        "ip_address": ("#8D6E63", "dns"),
+        "webrtc_ip": ("#78909C", "router"),
+        "language": ("#9CCC65", "language"),
+        "math_hash": ("#26A69A", "functions"),
+        "media_devices": ("#FF7043", "devices"),
+        "visit": ("#455A64", "link"),
+    }
+    edge_labels = {
+        "thumbmark_visitor_id": "has api id",
+        "thumbmark_hash": "has fingerprint",
+        "email": "captured email",
+        "canvas_hash": "canvas signal",
+        "audio_hash": "audio signal",
+        "webgl_hash": "webgl signal",
+        "fonts_hash": "fonts signal",
+        "hardware_profile": "hardware signal",
+        "speech_hash": "speech signal",
+        "screen_profile": "screen signal",
+        "ip_address": "seen from ip",
+        "webrtc_ip": "webrtc signal",
+        "timezone": "timezone signal",
+        "language": "language signal",
+        "math_hash": "math signal",
+        "media_devices": "media devices",
+    }
+
+    def signal_label(signal_type: str, value: str) -> str:
+        prefixes = {
+            "thumbmark_visitor_id": "TM",
+            "thumbmark_hash": "FP",
+            "canvas_hash": "CVS",
+            "audio_hash": "AUD",
+            "webgl_hash": "WGL",
+            "fonts_hash": "FNT",
+            "speech_hash": "SPK",
+            "webrtc_ip": "LAN",
+        }
+        if signal_type in {"hardware_profile", "screen_profile", "timezone", "ip_address", "language", "media_devices"}:
+            return value
+        prefix = prefixes.get(signal_type)
+        if prefix:
+            return f"{prefix}-{value[:12] if signal_type == 'thumbmark_visitor_id' else value[:10]}"
+        return value[:18]
+
+    nodes = {}
+    edge_map = {}
+
+    def add_node(node_id: str, node_type: str, label: str, **extra):
+        color, icon = node_meta.get(node_type, ("#94a3b8", "circle"))
+        existing = nodes.get(node_id)
+        occurrence_count = int(extra.pop("occurrence_count", 1) or 1)
+        if existing:
+            existing["occurrence_count"] = existing.get("occurrence_count", 1) + occurrence_count
+            existing.update({key: value for key, value in extra.items() if value is not None})
+            return
+        nodes[node_id] = {
+            "id": node_id,
+            "type": node_type,
+            "label": label,
+            "color": color,
+            "icon": icon,
+            "occurrence_count": occurrence_count,
+            **extra,
+        }
+
+    def add_edge(source: str, target: str, label: str, weight: int = 1, **extra):
+        key = (source, target, label, bool(extra.get("dashed")))
+        edge = edge_map.setdefault(
+            key,
+            {
+                "source": source,
+                "target": target,
+                "label": label,
+                "weight": weight,
+                **extra,
+            },
         )
-        .order_by(Visit.timestamp.desc())
+        edge["weight"] = max(edge.get("weight") or 0, weight or 0)
+
+    visitors = (
+        Visitor.query.options(
+            joinedload(Visitor.signals),
+            joinedload(Visitor.visits),
+        )
+        .order_by(Visitor.last_seen.desc().nullslast(), Visitor.created_at.desc())
+        .limit(500)
         .all()
     )
 
-    nodes = {}
-    edge_weights = defaultdict(int)
+    for visitor in visitors:
+        visitor_id = f"visitor:{visitor.id}"
+        confidence = max((visit.identity_confidence or 0 for visit in visitor.visits), default=0)
+        add_node(
+            visitor_id,
+            "visitor",
+            f"VIS-{str(visitor.id)[:8]}",
+            confidence=confidence,
+            url=url_for("dashboard.dashboard_stats.global_timeline", q=visitor.id),
+        )
 
-    for visit in visits:
-        if not visit.link:
-            continue
+        if visitor.probable_match_id:
+            target_id = f"visitor:{visitor.probable_match_id}"
+            add_node(target_id, "visitor", f"VIS-{str(visitor.probable_match_id)[:8]}")
+            add_edge(visitor_id, target_id, "probable match", 1, dashed=True)
 
-        slug_value = visit.link.slug
-        slug_id = f"slug:{slug_value}"
-        nodes[slug_id] = {
-            "id": slug_id,
-            "type": "slug",
-            "label": slug_value,
-            "url": url_for("dashboard.dashboard_stats.stats", slug=slug_value),
-        }
-
-        signal_nodes = []
-        signal_values = [
-            ("hash", visit.canvas_hash, visit.canvas_hash),
-            ("composite", visit.fingerprint_composite_v1, visit.fingerprint_composite_v1),
-            ("etag", visit.etag, visit.etag),
-            ("ip", visit.ip_address, None),
-        ]
-        for signal_type, signal_value, profile_fingerprint in signal_values:
-            if not signal_value:
+        for signal in visitor.signals:
+            if signal.signal_type not in node_meta:
                 continue
-            signal_id = f"{signal_type}:{signal_value}"
-            nodes[signal_id] = {
-                "id": signal_id,
-                "type": signal_type,
-                "label": signal_value[:10] if signal_type != "ip" else signal_value,
-                "url": (
-                    url_for("dashboard.dashboard_stats.device_profile", fingerprint=profile_fingerprint)
-                    if profile_fingerprint
-                    else url_for("dashboard.dashboard_stats.global_timeline", q=signal_value)
-                ),
-            }
-            edge_weights[(signal_id, slug_id)] += 1
-            signal_nodes.append(signal_id)
+            signal_id = f"signal:{signal.signal_type}:{signal.signal_value}"
+            add_node(
+                signal_id,
+                signal.signal_type,
+                signal_label(signal.signal_type, signal.signal_value),
+                weight=signal.confidence_weight,
+                occurrence_count=signal.occurrence_count,
+                url=url_for("dashboard.dashboard_stats.global_timeline", q=signal.signal_value),
+            )
+            add_edge(
+                visitor_id,
+                signal_id,
+                edge_labels.get(signal.signal_type, f"{signal.signal_type} signal"),
+                signal.confidence_weight or SIGNAL_WEIGHTS.get(signal.signal_type, 1),
+            )
 
-        if visit.email:
-            email_value = visit.email
-            email_id = f"email:{email_value}"
-            nodes[email_id] = {
-                "id": email_id,
-                "type": "email",
-                "label": email_value,
-                "url": url_for("dashboard.dashboard_stats.global_search", q=email_value),
-            }
-            edge_weights[(email_id, slug_id)] += 1
-            for signal_id in signal_nodes:
-                edge_weights[(signal_id, email_id)] += 1
+        for visit in sorted(visitor.visits, key=lambda item: item.timestamp or datetime.min, reverse=True)[:25]:
+            visit_id = f"visit:{visit.id}"
+            label_date = (visit.timestamp or datetime.utcnow()).date()
+            add_node(
+                visit_id,
+                "visit",
+                f"Visit {label_date}",
+                occurrence_count=1,
+                url=url_for("dashboard.dashboard_stats.global_timeline", q=str(visit.id)),
+            )
+            if visit.probable_visitor_id:
+                add_edge(visitor_id, f"visitor:{visit.probable_visitor_id}", "probable match", 1, dashed=True)
+            if visit.thumbmark_hash:
+                signal_id = f"signal:thumbmark_hash:{visit.thumbmark_hash}"
+                add_node(
+                    signal_id,
+                    "thumbmark_hash",
+                    signal_label("thumbmark_hash", visit.thumbmark_hash),
+                    weight=SIGNAL_WEIGHTS["thumbmark_hash"],
+                    url=url_for("dashboard.dashboard_stats.global_timeline", q=visit.thumbmark_hash),
+                )
+                add_edge(signal_id, visit_id, "recorded in", 1)
 
     degrees = defaultdict(int)
-    for (source, target), weight in edge_weights.items():
-        degrees[source] += weight
-        degrees[target] += weight
+    for edge in edge_map.values():
+        weight = edge.get("weight") or 1
+        degrees[edge["source"]] += weight
+        degrees[edge["target"]] += weight
 
-    top_node_ids = {
-        node_id
-        for node_id, _degree in sorted(
-            degrees.items(),
-            key=lambda item: (-item[1], item[0]),
-        )[:500]
-    }
+    if degrees:
+        top_node_ids = {
+            node_id
+            for node_id, _degree in sorted(
+                degrees.items(),
+                key=lambda item: (-item[1], item[0]),
+            )[:700]
+        }
+    else:
+        top_node_ids = set(nodes)
 
     filtered_nodes = [node for node_id, node in nodes.items() if node_id in top_node_ids]
-    filtered_links = [
-        {"source": source, "target": target, "weight": weight}
-        for (source, target), weight in edge_weights.items()
-        if source in top_node_ids and target in top_node_ids
+    filtered_edges = [
+        edge
+        for edge in edge_map.values()
+        if edge["source"] in top_node_ids and edge["target"] in top_node_ids
     ]
 
-    graph_data = json.dumps({"nodes": filtered_nodes, "links": filtered_links})
+    graph_data = json.dumps({"nodes": filtered_nodes, "edges": filtered_edges, "links": filtered_edges})
     return render_template("graph.html", graph_data=graph_data)
