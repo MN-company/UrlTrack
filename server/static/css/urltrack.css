@@ -22,7 +22,17 @@
 
 * { box-sizing: border-box; }
 html { background: var(--bg); color: var(--fg); font-family: var(--font-body); }
-body { margin: 0; min-width: 0; background: linear-gradient(180deg, oklch(17% 0.018 250), var(--bg) 420px); color: var(--fg); }
+body {
+  margin: 0;
+  min-width: 0;
+  min-height: 100vh;
+  height: auto;
+  display: block;
+  overflow-x: clip;
+  overflow-y: auto;
+  background: linear-gradient(180deg, oklch(17% 0.018 250), var(--bg) 420px);
+  color: var(--fg);
+}
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; }
 
