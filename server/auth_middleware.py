@@ -1,6 +1,6 @@
 import functools
 
-from flask import g, redirect, session, url_for
+from flask import current_app, g, redirect, session, url_for
 
 from .extensions import db
 from .models import User
@@ -16,6 +16,12 @@ def _user_attr(user, name: str, default=None):
 
 
 def get_current_user():
+    if current_app.config.get("TESTING") and session.get("_user_id"):
+        try:
+            return db.session.get(User, int(session["_user_id"]))
+        except (TypeError, ValueError):
+            return None
+
     token = session.get("supabase_access_token")
     if not token:
         return None
