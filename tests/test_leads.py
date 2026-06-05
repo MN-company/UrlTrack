@@ -1,3 +1,6 @@
+import json
+
+
 def test_enrich_visit_upserts_lead(app, monkeypatch):
     from server import worker
     from server.extensions import db
@@ -66,6 +69,47 @@ def test_lead_upsert_does_not_match_canvas_substrings(app, monkeypatch):
         assert existing.total_visits == 1
         assert created is not None
         assert created.id != existing_id
+
+
+def test_lead_upsert_matches_existing_lead_by_visitor_identity(app):
+    from server import worker
+    from server.extensions import db
+    from server.models import Lead, Link, Visit, Visitor
+
+    with app.app_context():
+        link = Link(slug="lead-visitor", destination="https://example.com")
+        visitor = Visitor(id="visitor-identity-1")
+        existing = Lead(
+            primary_canvas_hash="old-canvas",
+            all_canvas_hashes='["old-canvas"]',
+            all_ips='["1.1.1.1"]',
+            total_visits=1,
+        )
+        prior = Visit(
+            link=link,
+            visitor_id=visitor.id,
+            ip_address="1.1.1.1",
+            canvas_hash="old-canvas",
+            thumbmark_visitor_id="tm-visitor-1",
+        )
+        current = Visit(
+            link=link,
+            visitor_id=visitor.id,
+            ip_address="1.1.1.2",
+            canvas_hash="new-canvas",
+            thumbmark_visitor_id="tm-visitor-1",
+        )
+        db.session.add_all([link, visitor, existing, prior, current])
+        db.session.commit()
+        current_id = current.id
+        existing_id = existing.id
+
+        worker._upsert_lead(app, db.session.get(Visit, current_id))
+
+        updated = db.session.get(Lead, existing_id)
+        assert updated.total_visits == 2
+        assert json.loads(updated.all_canvas_hashes) == ["old-canvas", "new-canvas"]
+        assert Lead.query.count() == 1
 
 
 def test_leads_dashboard_detail_and_update(app, client, auth):

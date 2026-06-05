@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 
 def _create_visit(app):
@@ -168,6 +169,53 @@ def test_thumbmark_fp_endpoint_stores_payload_and_enqueues(app, client, monkeypa
         assert stored.cpu_cores == 8
         assert stored.ram_gb == 16
         assert stored.beacon_received_at is not None
+
+
+def test_loading_template_uses_thumbmark_public_api():
+    template = (Path(__file__).resolve().parents[1] / "server/templates/loading.html").read_text(encoding="utf-8")
+    assert "new ThumbmarkJS.Thumbmark" not in template
+    assert "ThumbmarkJS.getFingerprint" in template
+
+
+def test_thumbmark_api_request_keeps_api_key_out_of_body_and_authorization(app, monkeypatch):
+    from server.extensions import db
+    from server.models import Link, Visit
+    from server.services import thumbmark
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"visitorId": "tm-api-visitor", "confidence": 0.7}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["headers"] = headers
+        captured["json"] = json
+        return Response()
+
+    monkeypatch.setattr(thumbmark.requests, "post", fake_post)
+
+    with app.app_context():
+        app.config["THUMBMARK_API_KEY"] = "secret-key"
+        link = Link(slug="tm-api", destination="https://example.com")
+        db.session.add(link)
+        db.session.commit()
+        visit = Visit(
+            link_id=link.id,
+            thumbmark_hash="tm-hash",
+            thumbmark_raw='{"components":{"canvas":"abc"},"version":"1.0"}',
+        )
+        db.session.add(visit)
+        db.session.commit()
+
+        result = thumbmark.call_thumbmark_api(visit)
+
+        assert result["visitorId"] == "tm-api-visitor"
+        assert captured["headers"]["x-api-key"] == "secret-key"
+        assert "Authorization" not in captured["headers"]
+        assert captured["json"]["options"].get("api_key") is None
 
 
 def test_thumbmark_signals_match_same_visitor(app):

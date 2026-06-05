@@ -48,12 +48,14 @@
         };
 
         try {
-            const thumbmark = new ThumbmarkJS.Thumbmark({
-                experimental: true,
-                logging: false,
-                timeout: 3500
-            });
-            const result = await Promise.race([thumbmark.get(), timeout(4500)]);
+            const result = await Promise.race([
+                ThumbmarkJS.getFingerprint({
+                    experimental: true,
+                    logging: false,
+                    timeout: 3500
+                }),
+                timeout(4500)
+            ]);
 
             if (result) {
                 const fingerprintData = typeof ThumbmarkJS.getFingerprintData === "function"
@@ -135,9 +137,7 @@
                 };
 
                 const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-                if (navigator.sendBeacon) {
-                    navigator.sendBeacon("/fp", blob);
-                } else {
+                if (!navigator.sendBeacon || !navigator.sendBeacon("/fp", blob)) {
                     fetch("/fp", {
                         method: "POST",
                         body: blob,
