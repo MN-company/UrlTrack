@@ -1,171 +1,132 @@
 {% extends "base.html" %}
-
-{% block breadcrumb %}AI Analyst / Console{% endblock %}
+{% block title %} — AI Analyst{% endblock %}
 
 {% block content %}
-<div class="dashboard-grid" style="grid-template-columns: 2fr 1fr; align-items: start;">
-    <div class="card glass" style="display:flex;flex-direction:column;min-height:70vh;">
-        <div class="card-header">
-            <div>
-                <span class="card-title"><i class="fa-solid fa-brain"></i> AI Analyst</span>
-                <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.25rem;">Model: {{ model_name }}</div>
-            </div>
-            <div class="badge badge-success">Streaming</div>
-        </div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">AI insight / cited evidence</p>
+    <h1>Analyst console</h1>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}?risk_min=50&sort=risk">Risk queue</a>
+    <button class="btn primary" id="ai-run-btn">Run analysis</button>
+  </div>
+</header>
 
-        <div id="chat-history" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:1rem;padding:0.5rem 0 1rem 0;">
-            <div class="card" style="background:rgba(0,0,0,0.2);">
-                <div style="font-weight:600;margin-bottom:0.5rem;">AI Analyst</div>
-                <div>
-                    Ask about IPs, fingerprints, links, or patterns in recent visits. Context shortcuts:
-                    <code>@visit:123</code>, <code>@lead:42</code>, <code>@hash:abcd1234</code>, <code>@link:promo</code>, <code>@ip:1.2.3.4</code>.
-                </div>
-            </div>
-        </div>
-
-        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
-            <button class="btn btn-ghost btn-sm prompt-chip" data-prompt="Which high-risk visits need review today? Prioritize by impact.">Review risk queue</button>
-            <button class="btn btn-ghost btn-sm prompt-chip" data-prompt="Summarize the strongest lead intelligence patterns from recent visits.">Lead intelligence</button>
-            <button class="btn btn-ghost btn-sm prompt-chip" data-prompt="Find likely false matches or identity conflicts in recent visits.">Find false matches</button>
-            <button class="btn btn-ghost btn-sm prompt-chip" data-prompt="Recommend scoring weight adjustments based on reviewed labels.">Tune scoring</button>
-        </div>
-
-        <div style="display:flex;gap:0.75rem;">
-            <input id="chat-input" type="text" value="{{ initial_message }}" placeholder="Analyze suspicious patterns, compare links, summarize a fingerprint..." style="flex:1;">
-            <button id="send-btn" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Send</button>
-        </div>
+<section class="grid triple">
+  <div class="panel">
+    <div class="panel-head"><h2>What you should know</h2><span class="badge info">Auto insight</span></div>
+    <div class="insight-grid">
+      <a class="insight" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}">
+        <span class="badge warn">Investigation</span>
+        <strong>Cross-campaign signals</strong>
+        <p>Query visitor fingerprints across campaigns to find repeated identities and suspicious overlap.</p>
+      </a>
+      <a class="insight" href="{{ url_for('dashboard.dashboard_leads.leads_list') }}">
+        <span class="badge success">Leads</span>
+        <strong>{{ total_visits }} visits tracked</strong>
+        <p>{{ identified_visits }} identified with email across {{ total_links }} active links.</p>
+      </a>
+      <a class="insight" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}?risk_min=50">
+        <span class="badge danger">Review</span>
+        <strong>High-risk visits</strong>
+        <p>Use @visit:ID to investigate specific flags. Check VPN, bot signals, and fingerprint conflicts.</p>
+      </a>
+      <a class="insight" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}">
+        <span class="badge info">Graph</span>
+        <strong>Identity graph ready</strong>
+        <p>Canvas, email, IP, and ETag connections visible in the journey graph.</p>
+      </a>
     </div>
+  </div>
 
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-chart-simple"></i> Context</span>
-        </div>
-        <div style="display:grid;gap:0.75rem;">
-            <div class="toggle-row">
-                <label>Total visits</label>
-                <span>{{ total_visits }}</span>
-            </div>
-            <div class="toggle-row">
-                <label>Total links</label>
-                <span>{{ total_links }}</span>
-            </div>
-            <div class="toggle-row">
-                <label>Identified visits</label>
-                <span>{{ identified_visits }}</span>
-            </div>
-            <div class="toggle-row">
-                <label>High risk</label>
-                <span>{{ high_risk_visits }}</span>
-            </div>
-            <div class="toggle-row">
-                <label>Needs review</label>
-                <span>{{ unreviewed_high_risk }}</span>
-            </div>
-            <div class="toggle-row">
-                <label>Reviewed labels</label>
-                <span>{{ reviewed_visits }}</span>
-            </div>
-        </div>
-
-        <div style="margin-top:1.25rem;">
-            <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">Recent visits</div>
-            <div style="display:grid;gap:0.5rem;">
-                {% for visit in recent_visits %}
-                <div style="padding:0.75rem;border:1px solid var(--border-subtle);border-radius:8px;background:rgba(0,0,0,0.18);">
-                    <div style="font-weight:600;">/{{ visit.link.slug }}</div>
-                    <div class="text-mono" style="font-size:0.8rem;">{{ visit.ip_address }}</div>
-                    <div style="font-size:0.8rem;color:var(--text-secondary);">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') }}</div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
+  <div class="panel pad chat">
+    <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px">
+      <h2>Ask with commands</h2>
+      <span class="badge success" title="Model: {{ model_name }}">{{ model_name }}</span>
     </div>
-</div>
+    <div class="command-row">
+      <span class="command">@visit:</span>
+      <span class="command">@hash:</span>
+      <span class="command">@link:</span>
+      <span class="command">@ip:</span>
+      <span class="command">@email:</span>
+      <span class="command">@lead:</span>
+    </div>
+    <div class="field" style="margin-top:12px">
+      <label>Question</label>
+      <textarea class="textarea mono" id="chat-input" rows="3">{{ initial_message or '' }}</textarea>
+    </div>
+    <div class="answer" id="ai-output">
+      <strong>Analyst result</strong>
+      <p>Enter a command above and click Run analysis.</p>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <div class="panel-head"><h2>Suggested queries</h2><span class="badge warn">Try these</span></div>
+    <div class="queue" id="suggestion-queue">
+      <button class="queue-item" data-prompt="Which high-risk visits need review today? Prioritize by impact.">
+        <div class="queue-title mono">Review risk queue</div>
+        <div class="queue-meta">Visits needing immediate attention.</div>
+      </button>
+      <button class="queue-item" data-prompt="Summarize the strongest lead intelligence patterns from recent visits.">
+        <div class="queue-title mono">Lead intelligence</div>
+        <div class="queue-meta">Strongest identity signals.</div>
+      </button>
+      <button class="queue-item" data-prompt="Find likely false matches or identity conflicts in recent visits.">
+        <div class="queue-title mono">Find conflicts</div>
+        <div class="queue-meta">Identity overlap and false positives.</div>
+      </button>
+    </div>
+    <div class="queue" style="margin-top:10px; border-top:1px solid var(--border); padding-top:12px">
+      <div class="queue-item"><div class="queue-top"><span>Total visits</span><strong>{{ total_visits }}</strong></div></div>
+      <div class="queue-item"><div class="queue-top"><span>Active links</span><strong>{{ total_links }}</strong></div></div>
+      <div class="queue-item"><div class="queue-top"><span>Identified</span><strong>{{ identified_visits }}</strong></div></div>
+    </div>
+  </aside>
+</section>
 {% endblock %}
 
 {% block scripts %}
-<script nonce="{{ csp_nonce|default('') }}">
-    const historyEl = document.getElementById('chat-history');
-    const inputEl = document.getElementById('chat-input');
-    const sendBtn = document.getElementById('send-btn');
+<script>
+(function () {
+  var input = document.getElementById('chat-input');
+  var output = document.getElementById('ai-output');
+  var btn = document.getElementById('ai-run-btn');
+  var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-    function addMessage(author, text, kind) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'card';
-        wrapper.style.background = kind === 'user' ? 'rgba(59,130,246,0.12)' : 'rgba(0,0,0,0.2)';
-        wrapper.innerHTML = `
-            <div style="font-weight:600;margin-bottom:0.5rem;">${author}</div>
-            <div class="message-body"></div>
-        `;
-        wrapper.querySelector('.message-body').textContent = text;
-        historyEl.appendChild(wrapper);
-        historyEl.scrollTop = historyEl.scrollHeight;
-        return wrapper.querySelector('.message-body');
-    }
+  document.getElementById('suggestion-queue').addEventListener('click', function (e) {
+    var item = e.target.closest('[data-prompt]');
+    if (item) { input.value = item.getAttribute('data-prompt'); }
+  });
 
-    async function sendMessage() {
-        const message = inputEl.value.trim();
-        if (!message) return;
+  btn.addEventListener('click', function () {
+    var msg = input.value.trim();
+    if (!msg) return;
+    while (output.firstChild) output.removeChild(output.firstChild);
+    var title = document.createElement('strong');
+    title.textContent = 'Analyst result';
+    var body = document.createElement('p');
+    body.id = 'ai-stream';
+    body.textContent = 'Thinking…';
+    output.appendChild(title);
+    output.appendChild(body);
 
-        addMessage('You', message, 'user');
-        inputEl.value = '';
-        const assistantBody = addMessage('AI Analyst', '', 'assistant');
-        sendBtn.disabled = true;
-
-        try {
-            const response = await fetch("{{ url_for('dashboard.dashboard_ai.ai_console_stream') }}", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message })
-            });
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const events = buffer.split('\n\n');
-                buffer = events.pop();
-
-                for (const event of events) {
-                    const line = event.split('\n').find(row => row.startsWith('data: '));
-                    if (!line) continue;
-                    const payload = line.slice(6);
-                    if (payload === '[DONE]') {
-                        continue;
-                    }
-                    const parsed = JSON.parse(payload);
-                    if (parsed.type === 'chunk') {
-                        assistantBody.textContent += parsed.text;
-                    }
-                    if (parsed.type === 'error') {
-                        assistantBody.textContent = `Error: ${parsed.error}`;
-                    }
-                    historyEl.scrollTop = historyEl.scrollHeight;
-                }
-            }
-        } catch (error) {
-            assistantBody.textContent = `Error: ${error.message}`;
-        } finally {
-            sendBtn.disabled = false;
-        }
-    }
-
-    sendBtn.addEventListener('click', sendMessage);
-    inputEl.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') sendMessage();
-    });
-    document.querySelectorAll('.prompt-chip').forEach((button) => {
-        button.addEventListener('click', () => {
-            inputEl.value = button.dataset.prompt;
-            inputEl.focus();
-        });
-    });
-    if (inputEl.value.trim()) {
-        setTimeout(sendMessage, 150);
-    }
+    var es = new EventSource('/dashboard/ai/console/stream?message=' + encodeURIComponent(msg));
+    var text = '';
+    es.onmessage = function (e) {
+      if (e.data === '[DONE]') { es.close(); return; }
+      try {
+        var d = JSON.parse(e.data);
+        if (d.text) { text += d.text; body.textContent = text; }
+      } catch (ex) {}
+    };
+    es.onerror = function () {
+      es.close();
+      if (!text) body.textContent = 'Error — check AI API key in settings.';
+    };
+  });
+}());
 </script>
 {% endblock %}

@@ -5,13 +5,26 @@ primary_region = "fra"
 
 [env]
   FLASK_APP = "server:create_app"
+  TRUST_PROXY_HEADERS = "true"
+  SESSION_COOKIE_SECURE = "true"
+  SKIP_BACKGROUND_WORKER = "1"
+
+[deploy]
+  release_command = "python -m flask --app server:create_app db upgrade"
 
 [http_service]
   internal_port = 8000
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
 
 [[vm]]
   memory = "1gb"

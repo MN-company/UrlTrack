@@ -1,69 +1,83 @@
 {% extends "base.html" %}
+{% block title %} — Leads{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <div>
-            <h2>Leads</h2>
-            <p style="color:var(--text-muted); margin:6px 0 0;">People and device clusters reconstructed from visits.</p>
-        </div>
-    </div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Lead Intelligence Center</p>
+    <h1>People and entities</h1>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}">Journey Graph</a>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}?signal=email">Email visits</a>
+  </div>
+</header>
 
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Label</th>
-                <th>Email</th>
-                <th>Country</th>
-                <th>Device</th>
-                <th>Visits</th>
-                <th>Last Seen</th>
-                <th>VPN</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for card in lead_cards %}
-            {% set lead = card.lead %}
-            <tr onclick="window.location='{{ url_for('dashboard.dashboard_leads.lead_detail', lead_id=lead.id) }}';" style="cursor:pointer;">
-                <td>
-                    {% if lead.label %}
-                    <span class="badge {% if lead.label|lower == 'hot' %}badge-danger{% elif lead.label|lower == 'warm' %}badge-warning{% elif lead.label|lower == 'vip' %}badge-purple{% else %}badge-blue{% endif %}">
-                        {{ lead.label }}
-                    </span>
-                    {% else %}
-                    <span style="color:var(--text-muted);">Unlabeled</span>
-                    {% endif %}
-                </td>
-                <td>{{ lead.email or "Anonymous" }}</td>
-                <td>{{ lead.country or "Unknown" }}</td>
-                <td>{{ lead.device_type or "?" }} / {{ lead.os_family or "?" }}</td>
-                <td>
-                    <div>{{ lead.total_visits }}</div>
-                    <div style="font-size:0.76rem;color:var(--text-secondary);">
-                        ID {{ card.avg_identity if card.avg_identity is not none else '-' }} · Risk {{ card.avg_risk if card.avg_risk is not none else '-' }}
-                    </div>
-                </td>
-                <td>{{ lead.last_seen.strftime('%Y-%m-%d %H:%M') if lead.last_seen else '-' }}</td>
-                <td>
-                    {% if card.avg_risk is not none and card.avg_risk >= 50 %}
-                    <span class="badge badge-danger">High risk</span>
-                    {% elif card.open_review_count > 0 %}
-                    <span class="badge badge-warning">{{ card.open_review_count }} review</span>
-                    {% elif card.reviewed_count > 0 %}
-                    <span class="badge badge-success">Reviewed</span>
-                    {% elif lead.is_vpn %}
-                    <span class="badge badge-warning">VPN</span>
-                    {% else %}
-                    <span class="badge badge-success">Clean</span>
-                    {% endif %}
-                </td>
-            </tr>
+<section class="grid metrics">
+  <div class="panel metric compact">
+    <div class="label">Known leads</div>
+    <div class="value">{{ lead_cards|length }}</div>
+    <div class="delta">reconstructed identities</div>
+  </div>
+  <div class="panel metric compact">
+    <div class="label">With email</div>
+    <div class="value">{{ lead_cards|selectattr('lead.email')|list|length }}</div>
+    <div class="delta">email captured</div>
+  </div>
+  <div class="panel metric compact">
+    <div class="label">VPN / proxy</div>
+    <div class="value">{{ lead_cards|selectattr('lead.is_vpn')|list|length }}</div>
+    <div class="delta"><span class="badge warn">Flagged</span></div>
+  </div>
+</section>
+
+<section class="panel" style="margin-top:14px">
+  <div class="panel-head"><h2>Lead queue</h2><span class="badge info">{{ lead_cards|length }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Identity</th>
+          <th>Email</th>
+          <th>Geo / device</th>
+          <th>Visits</th>
+          <th>Confidence</th>
+          <th>Risk</th>
+          <th>VPN</th>
+          <th>Label</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for card in lead_cards %}
+        {% set lead = card.lead %}
+        <tr onclick="location.href='{{ url_for('dashboard.dashboard_leads.lead_detail', lead_id=lead.id) }}'">
+          <td>{% if lead.org %}{{ lead.org }}{% elif lead.primary_canvas_hash %}{{ lead.primary_canvas_hash[:12] }}…{% else %}Unknown{% endif %}</td>
+          <td>{% if lead.email %}{{ lead.email }}{% else %}<span class="muted">Not captured</span>{% endif %}</td>
+          <td>{{ lead.country or '?' }} / {{ lead.os_family or '?' }} {{ lead.device_type or '' }}</td>
+          <td>{{ lead.total_visits }}</td>
+          <td>{% if card.avg_identity is not none %}<span class="badge info">{{ card.avg_identity }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>
+            {% if card.avg_risk is not none and card.avg_risk >= 50 %}<span class="badge danger">{{ card.avg_risk }}</span>
+            {% elif card.avg_risk is not none and card.avg_risk > 0 %}<span class="badge warn">{{ card.avg_risk }}</span>
+            {% elif card.avg_risk is not none %}<span class="badge success">{{ card.avg_risk }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if lead.is_vpn %}<span class="badge danger">VPN</span>{% else %}<span class="badge success">Clean</span>{% endif %}
+          </td>
+          <td>
+            {% if lead.label %}
+            <span class="badge {% if lead.label|lower == 'hot' %}danger{% elif lead.label|lower == 'warm' %}warn{% else %}info{% endif %}">{{ lead.label }}</span>
             {% else %}
-            <tr>
-                <td colspan="7" style="color:var(--text-muted);">No leads yet.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
+            <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="muted" style="text-align:center;padding:32px">No leads yet. Visits with captured emails appear here.</td></tr>
+        {% endfor %}
+      </tbody>
     </table>
-</div>
+  </div>
+</section>
 {% endblock %}

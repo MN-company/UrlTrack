@@ -1,123 +1,92 @@
 {% extends "base.html" %}
-
-{% block breadcrumb %}Global Intel / Cross Tracking{% endblock %}
+{% block title %} — Journey Graph{% endblock %}
 
 {% block content %}
-<div class="card" style="margin-bottom:1.25rem;">
-    <form method="GET" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;align-items:end;">
-        <div>
-            <label>Signal</label>
-            <select name="group_by">
-                {% for key, item in groups.items() %}
-                <option value="{{ key }}" {% if key == group_by %}selected{% endif %}>{{ item.label }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label>Search Identifier</label>
-            <input type="text" name="q" value="{{ q }}" placeholder="email, IP, hash">
-        </div>
-        <div>
-            <label>Days</label>
-            <select name="days">
-                <option value="7" {% if days == 7 %}selected{% endif %}>7</option>
-                <option value="30" {% if days == 30 %}selected{% endif %}>30</option>
-                <option value="90" {% if days == 90 %}selected{% endif %}>90</option>
-                <option value="0" {% if days == 0 %}selected{% endif %}>All</option>
-            </select>
-        </div>
-        <div>
-            <label>Min Links</label>
-            <input type="number" min="1" max="100" name="min_links" value="{{ min_links }}">
-        </div>
-        <div>
-            <label>Min Risk</label>
-            <input type="number" min="0" max="100" name="risk_min" value="{{ risk_min }}">
-        </div>
-        <div>
-            <label>Min ID</label>
-            <input type="number" min="0" max="100" name="identity_min" value="{{ identity_min }}">
-        </div>
-        <button class="btn btn-primary">Find Matches</button>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Journey graph / Identity cluster</p>
+    <h1>Cross-visit intelligence</h1>
+  </div>
+  <div class="actions">
+    <form method="GET" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select class="select" name="group_by" style="width:auto">
+        {% for key, item in groups.items() %}
+        <option value="{{ key }}" {% if key == group_by %}selected{% endif %}>{{ item.label }}</option>
+        {% endfor %}
+      </select>
+      <input class="input" name="q" value="{{ q }}" placeholder="email, IP, hash…" style="width:200px">
+      <select class="select" name="days" style="width:auto">
+        <option value="7" {% if days == 7 %}selected{% endif %}>7 days</option>
+        <option value="30" {% if days == 30 %}selected{% endif %}>30 days</option>
+        <option value="90" {% if days == 90 %}selected{% endif %}>90 days</option>
+        <option value="0" {% if days == 0 %}selected{% endif %}>All time</option>
+      </select>
+      {% if request.args.get('min_links') %}
+      <input type="hidden" name="min_links" value="{{ request.args.get('min_links') }}">
+      {% endif %}
+      <button class="btn primary" type="submit">Filter</button>
     </form>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.graph') }}">Graph view</a>
+  </div>
+</header>
+
+<div class="mode-strip">
+  {% for key, item in groups.items() %}
+  <a class="mode-chip {% if key == group_by %}active{% endif %}" href="?group_by={{ key }}&days={{ days }}&q={{ q }}">
+    <strong>{{ item.label }}</strong>
+  </a>
+  {% endfor %}
 </div>
 
-<div class="card">
-    <div class="card-header">
-        <div>
-            <span class="card-title"><i class="fa-solid fa-fingerprint"></i> Cross-Tracking Matches</span>
-            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">
-                Finds the same signal appearing across multiple tracked links. Use this to spot recurring visitors, shared devices, reused emails, and suspicious infrastructure.
-            </div>
-        </div>
-        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
-            <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}" class="btn btn-ghost">Timeline</a>
-            <a href="{{ url_for('dashboard.dashboard_stats.graph') }}" class="btn btn-ghost">Graph</a>
-            <div class="badge badge-blue">{{ identities|length }}</div>
-        </div>
-    </div>
-
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Identifier</th>
-                <th>Coverage</th>
-                <th>Trust</th>
-                <th>Links</th>
-                <th>Recent Evidence</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for identity in identities %}
-            <tr>
-                <td>
-                    <div class="text-mono">{{ identity.short_identifier }}</div>
-                    {% if identity.emails %}
-                    <div style="font-size:0.8rem;color:var(--text-secondary);">{{ identity.emails|join(', ') }}</div>
-                    {% endif %}
-                    {% if identity.countries %}
-                    <div style="font-size:0.8rem;color:var(--text-secondary);">{{ identity.countries|join(', ') }}</div>
-                    {% endif %}
-                </td>
-                <td>
-                    <div><strong>{{ identity.visit_count }}</strong> visits</div>
-                    <div style="font-size:0.8rem;color:var(--text-secondary);">{{ identity.link_count }} linked campaigns</div>
-                </td>
-                <td>
-                    <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
-                        <span class="badge badge-blue">ID {{ identity.avg_identity }}</span>
-                        {% if identity.avg_risk >= 50 %}
-                        <span class="badge badge-danger">Risk {{ identity.avg_risk }}</span>
-                        {% elif identity.avg_risk > 0 %}
-                        <span class="badge badge-warning">Risk {{ identity.avg_risk }}</span>
-                        {% else %}
-                        <span class="badge badge-success">Risk 0</span>
-                        {% endif %}
-                    </div>
-                </td>
-                <td>
-                    {% for slug in identity.slugs[:6] %}
-                    <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=slug) }}" class="badge badge-purple">/{{ slug }}</a>
-                    {% endfor %}
-                </td>
-                <td>
-                    {% for visit in identity.visits[:4] %}
-                    <div style="margin-bottom:0.35rem;">
-                        <span class="text-mono">{{ visit.timestamp.strftime('%m-%d %H:%M') }}</span>
-                        <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) }}">/{{ visit.link.slug }}</a>
-                        <span style="color:var(--text-secondary);">{{ visit.email or visit.ip_address or 'anonymous' }}</span>
-                    </div>
-                    {% endfor %}
-                </td>
-                <td>
-                    <a href="{{ identity.profile_url }}" class="btn btn-ghost">Inspect</a>
-                </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="6">No cross-tracking matches found for the selected filters.</td></tr>
-            {% endfor %}
-        </tbody>
+{% if identities %}
+<section class="panel" style="margin-top:14px">
+  <div class="panel-head">
+    <h2>Cross-visit clusters</h2>
+    <span class="badge info">{{ identities|length }} identifiers found</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Identifier</th>
+          <th>Links</th>
+          <th>Visits</th>
+          <th>Countries</th>
+          <th>Identity</th>
+          <th>Risk</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in identities %}
+        <tr>
+          <td class="mono">{{ row.short_identifier }}</td>
+          <td class="mono">
+            {% for slug in row.slugs %}<span class="badge info" style="margin:1px">/{{ slug }}</span>{% endfor %}
+            <span class="muted">({{ row.link_count }})</span>
+          </td>
+          <td>{{ row.visit_count }}</td>
+          <td class="muted">{{ row.countries|join(', ') if row.countries else '—' }}</td>
+          <td><span class="badge info">{{ row.avg_identity }}</span></td>
+          <td>
+            {% if row.avg_risk >= 65 %}<span class="badge danger">{{ row.avg_risk }}</span>
+            {% elif row.avg_risk >= 40 %}<span class="badge warn">{{ row.avg_risk }}</span>
+            {% else %}<span class="badge success">{{ row.avg_risk }}</span>{% endif %}
+          </td>
+          <td>
+            <a class="badge info" href="{{ row.profile_url }}">Open</a>
+            <a class="badge" href="{{ url_for('dashboard.dashboard_ai.ai_console') }}?message={{ ('@' ~ groups[group_by].node_prefix ~ ':' ~ row.identifier ~ ' explain related visits')|urlencode }}">AI</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
-</div>
+  </div>
+</section>
+{% else %}
+<section class="panel pad" style="margin-top:14px;text-align:center">
+  <p class="muted">No cross-visit signals found for these filters.</p>
+  <a class="btn" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}">Reset filters</a>
+</section>
+{% endif %}
 {% endblock %}

@@ -1,7 +1,8 @@
 import json
 
 from flask import Blueprint, Response, jsonify, redirect, render_template, request, stream_with_context, url_for
-from flask_login import login_required
+
+from ...auth_middleware import workspace_required
 
 from ...config import Config
 from ...models import Link, Visit
@@ -19,7 +20,7 @@ def _extract_message():
 
 
 @bp.route("/ai/console")
-@login_required
+@workspace_required("analyst")
 def ai_console():
     return render_template(
         "ai_console.html",
@@ -36,7 +37,7 @@ def ai_console():
 
 
 @bp.route("/ai/console/send", methods=["POST"])
-@login_required
+@workspace_required("analyst")
 def ai_console_send():
     message = _extract_message()
     if not message:
@@ -50,7 +51,7 @@ def ai_console_send():
 
 
 @bp.route("/ai/console/stream", methods=["POST", "GET"])
-@login_required
+@workspace_required("analyst")
 def ai_console_stream():
     message = _extract_message()
     if not message:
@@ -70,6 +71,6 @@ def ai_console_stream():
 
 
 @bp.route("/ai")
-@login_required
+@workspace_required("analyst")
 def ai_dashboard():
     return redirect(url_for("dashboard.dashboard_ai.ai_console"))

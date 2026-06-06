@@ -1,186 +1,168 @@
 {% extends "base.html" %}
+{% block title %} — QR{% endblock %}
 
 {% block content %}
-<div class="page-hero form-shell">
-    <div>
-        <div class="page-kicker">QR code</div>
-        <h1 class="page-title">/{{ link.slug }}</h1>
-        <p class="page-subtitle">Customize colors, gradients, logo, and export format.</p>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">QR code</p>
+    <h1 class="mono">{{ link.slug }}</h1>
+    <p>Customize colors, gradients, logo, and export format.</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_links.links') }}">Back</a>
+  </div>
+</header>
+
+<section class="grid split" style="grid-template-columns:minmax(280px,0.9fr) minmax(320px,1.1fr)">
+  <div class="panel pad" style="text-align:center">
+    <div style="padding:16px;background:#fff;border-radius:12px;margin-bottom:14px">
+      <img id="qr-preview" src="{{ url_for('dashboard.dashboard_links.qr_code', slug=link.slug, scale=10, format='png') }}" alt="QR preview" style="max-width:100%;border-radius:8px">
     </div>
-    <a href="{{ url_for('dashboard.dashboard_links.links') }}" class="btn btn-ghost">Back</a>
-</div>
-
-<div class="form-shell" style="display:grid;grid-template-columns:minmax(280px,0.9fr) minmax(320px,1.1fr);gap:1.25rem;align-items:start;">
-    <div class="card glass" style="text-align:center;">
-        <div style="padding:1rem;background:rgba(255,255,255,0.04);border-radius:8px;margin-bottom:1rem;">
-            <img id="qr-preview"
-                src="{{ url_for('dashboard.dashboard_links.qr_code', slug=link.slug, scale=10, format='png') }}"
-                alt="QR code preview"
-                style="max-width:100%;border-radius:8px;background:#fff;">
-        </div>
-        <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
-            <a id="dl-png" href="#" class="btn btn-primary" download="qr_{{ link.slug }}.png">PNG</a>
-            <a id="dl-png-transp" href="#" class="btn btn-ghost" download="qr_{{ link.slug }}_transparent.png">Transparent PNG</a>
-            <a id="dl-svg" href="#" class="btn btn-ghost" download="qr_{{ link.slug }}.svg">SVG</a>
-        </div>
-        <div style="margin-top:0.85rem;font-size:0.78rem;color:var(--text-secondary);word-break:break-all;">
-            Encodes: <code>{{ link.public_masked_url or request.host_url.rstrip('/') ~ '/' ~ link.slug }}</code>
-        </div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <a id="dl-png" href="#" class="btn primary" download="qr_{{ link.slug }}.png">PNG</a>
+      <a id="dl-png-transp" href="#" class="btn" download="qr_{{ link.slug }}_transparent.png">Transparent</a>
+      <a id="dl-svg" href="#" class="btn" download="qr_{{ link.slug }}.svg">SVG</a>
     </div>
-
-    <div class="card glass">
-        <form method="POST"
-            action="{{ url_for('dashboard.dashboard_links.qr_save', slug=link.slug) }}"
-            enctype="multipart/form-data"
-            id="qr-form">
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="fg_color">Foreground color</label>
-                    <input type="color" name="fg_color" id="fg_color" value="{{ qr_config.fg_color }}" oninput="livePreview()">
-                </div>
-                <div class="form-group">
-                    <label for="bg_color">Background color</label>
-                    <input type="color" name="bg_color" id="bg_color" value="{{ qr_config.bg_color }}" oninput="livePreview()">
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label style="display:flex;align-items:center;gap:0.5rem;font-weight:500;">
-                    <input type="checkbox" name="transparent_bg" id="transparent_bg"
-                        {% if qr_config.transparent_bg %}checked{% endif %}
-                        onchange="livePreview()">
-                    Transparent background
-                </label>
-            </div>
-
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="gradient_color">Gradient color</label>
-                    <input type="color" name="gradient_color" id="gradient_color"
-                        value="{{ qr_config.gradient_color or '#00C853' }}"
-                        oninput="livePreview()">
-                    <label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.45rem;font-size:0.82rem;font-weight:500;">
-                        <input type="checkbox" name="enable_gradient" id="enable_gradient"
-                            {% if qr_config.gradient_color %}checked{% endif %}
-                            onchange="toggleGradient()">
-                        Enable gradient
-                    </label>
-                </div>
-                <div class="form-group" id="gradient_dir_row" {% if not qr_config.gradient_color %}style="display:none;"{% endif %}>
-                    <label for="gradient_direction">Gradient direction</label>
-                    <select name="gradient_direction" id="gradient_direction" onchange="livePreview()">
-                        <option value="diagonal" {% if qr_config.gradient_direction == 'diagonal' %}selected{% endif %}>Diagonal</option>
-                        <option value="horizontal" {% if qr_config.gradient_direction == 'horizontal' %}selected{% endif %}>Horizontal</option>
-                        <option value="vertical" {% if qr_config.gradient_direction == 'vertical' %}selected{% endif %}>Vertical</option>
-                        <option value="radial" {% if qr_config.gradient_direction == 'radial' %}selected{% endif %}>Radial</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="dot_style">Dot style</label>
-                    <select name="dot_style" id="dot_style" onchange="livePreview()">
-                        <option value="square" {% if qr_config.dot_style == 'square' %}selected{% endif %}>Square</option>
-                        <option value="rounded" {% if qr_config.dot_style == 'rounded' %}selected{% endif %}>Rounded</option>
-                        <option value="circle" {% if qr_config.dot_style == 'circle' %}selected{% endif %}>Circle</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="error_correction">Error correction</label>
-                    <select name="error_correction" id="error_correction" onchange="livePreview()">
-                        <option value="L" {% if qr_config.error_correction == 'L' %}selected{% endif %}>L - 7%</option>
-                        <option value="M" {% if qr_config.error_correction == 'M' %}selected{% endif %}>M - 15%</option>
-                        <option value="Q" {% if qr_config.error_correction == 'Q' %}selected{% endif %}>Q - 25%</option>
-                        <option value="H" {% if qr_config.error_correction == 'H' %}selected{% endif %}>H - 30%</option>
-                    </select>
-                    <div id="ec-warning" style="font-size:0.75rem;color:#FF6D00;margin-top:0.35rem;display:none;">
-                        Error correction set to H because a logo is present.
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label for="logo_file">Logo at center</label>
-                {% if qr_config.logo_path %}
-                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;font-size:0.84rem;color:var(--accent-primary);">
-                    <span>Logo uploaded</span>
-                    <label style="display:flex;align-items:center;gap:0.35rem;color:var(--text-secondary);font-weight:500;">
-                        <input type="checkbox" name="remove_logo" value="1" onchange="livePreview()"> Remove
-                    </label>
-                </div>
-                {% endif %}
-                <input type="file" name="logo_file" id="logo_file" accept=".png,.jpg,.jpeg,.webp,.svg" onchange="onLogoChange()">
-                <div class="help-text">PNG, JPG, WEBP or SVG. Logos force H error correction and are capped at 25% of QR width.</div>
-            </div>
-
-            <div class="form-footer">
-                <button type="submit" class="btn btn-primary">Save configuration</button>
-                <button type="button" class="btn btn-ghost" onclick="resetDefaults()">Reset</button>
-            </div>
-        </form>
+    <div class="muted" style="margin-top:12px;font-size:12px;word-break:break-all">
+      Encodes: <code class="mono">{{ link.public_masked_url or request.host_url.rstrip('/') ~ '/' ~ link.slug }}</code>
     </div>
-</div>
+  </div>
 
-<script nonce="{{ csp_nonce|default('') }}">
-    function previewUrl(transparent, fmt) {
-        const fg = document.getElementById("fg_color").value.replace("#", "");
-        const bg = document.getElementById("bg_color").value.replace("#", "");
-        const ec = document.getElementById("error_correction").value;
-        const dot = document.getElementById("dot_style").value;
-        const dir = document.getElementById("gradient_direction").value;
-        const gradEnabled = document.getElementById("enable_gradient").checked;
-        const grad = gradEnabled ? document.getElementById("gradient_color").value.replace("#", "") : "";
-        const transp = transparent || document.getElementById("transparent_bg").checked;
-        const format = fmt || "png";
+  <div class="panel pad">
+    <form method="POST" action="{{ url_for('dashboard.dashboard_links.qr_save', slug=link.slug) }}" enctype="multipart/form-data" id="qr-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-grid">
+        <div class="field"><label>Foreground</label><input class="input" type="color" name="fg_color" id="fg_color" value="{{ qr_config.fg_color }}" oninput="livePreview()"></div>
+        <div class="field"><label>Background</label><input class="input" type="color" name="bg_color" id="bg_color" value="{{ qr_config.bg_color }}" oninput="livePreview()"></div>
+      </div>
+      <label class="toggle {% if qr_config.transparent_bg %}enabled{% endif %}" style="margin-top:12px" id="transp-toggle">
+        <div><h3>Transparent background</h3></div>
+        <input type="checkbox" name="transparent_bg" id="transparent_bg" {% if qr_config.transparent_bg %}checked{% endif %} style="display:none">
+        <span class="switch"></span>
+      </label>
+      <div class="form-grid" style="margin-top:12px">
+        <div class="field">
+          <label>Gradient color</label>
+          <input class="input" type="color" name="gradient_color" id="gradient_color" value="{{ qr_config.gradient_color or '#00C853' }}" oninput="livePreview()">
+          <label class="toggle {% if qr_config.gradient_color %}enabled{% endif %}" style="margin-top:8px" id="grad-toggle">
+            <div><h3>Enable gradient</h3></div>
+            <input type="checkbox" name="enable_gradient" id="enable_gradient" {% if qr_config.gradient_color %}checked{% endif %} style="display:none">
+            <span class="switch"></span>
+          </label>
+        </div>
+        <div class="field" id="gradient_dir_row" {% if not qr_config.gradient_color %}style="display:none"{% endif %}>
+          <label>Gradient direction</label>
+          <select class="select" name="gradient_direction" id="gradient_direction" onchange="livePreview()">
+            <option value="diagonal" {% if qr_config.gradient_direction == 'diagonal' %}selected{% endif %}>Diagonal</option>
+            <option value="horizontal" {% if qr_config.gradient_direction == 'horizontal' %}selected{% endif %}>Horizontal</option>
+            <option value="vertical" {% if qr_config.gradient_direction == 'vertical' %}selected{% endif %}>Vertical</option>
+            <option value="radial" {% if qr_config.gradient_direction == 'radial' %}selected{% endif %}>Radial</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid" style="margin-top:12px">
+        <div class="field">
+          <label>Dot style</label>
+          <select class="select" name="dot_style" id="dot_style" onchange="livePreview()">
+            <option value="square" {% if qr_config.dot_style == 'square' %}selected{% endif %}>Square</option>
+            <option value="rounded" {% if qr_config.dot_style == 'rounded' %}selected{% endif %}>Rounded</option>
+            <option value="circle" {% if qr_config.dot_style == 'circle' %}selected{% endif %}>Circle</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Error correction</label>
+          <select class="select" name="error_correction" id="error_correction" onchange="livePreview()">
+            <option value="L" {% if qr_config.error_correction == 'L' %}selected{% endif %}>L · 7%</option>
+            <option value="M" {% if qr_config.error_correction == 'M' %}selected{% endif %}>M · 15%</option>
+            <option value="Q" {% if qr_config.error_correction == 'Q' %}selected{% endif %}>Q · 25%</option>
+            <option value="H" {% if qr_config.error_correction == 'H' %}selected{% endif %}>H · 30%</option>
+          </select>
+          <div id="ec-warning" class="muted" style="font-size:12px;margin-top:6px;display:none;color:var(--warn)">Set to H because a logo is present.</div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Logo at center</label>
+        {% if qr_config.logo_path %}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:13px;color:var(--info)">
+          <span>Logo uploaded</span>
+          <label class="muted" style="display:flex;align-items:center;gap:4px"><input type="checkbox" name="remove_logo" value="1" onchange="livePreview()"> Remove</label>
+        </div>
+        {% endif %}
+        <input class="input" type="file" name="logo_file" id="logo_file" accept=".png,.jpg,.jpeg,.webp,.svg" onchange="onLogoChange()">
+        <div class="muted" style="font-size:12px;margin-top:4px">PNG, JPG, WEBP or SVG. Logos force H error correction.</div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button type="submit" class="btn primary">Save configuration</button>
+        <button type="button" class="btn" onclick="resetDefaults()">Reset</button>
+      </div>
+    </form>
+  </div>
+</section>
 
-        let url = `{{ url_for('dashboard.dashboard_links.qr_code', slug=link.slug) }}?scale=10&format=${format}&fg_color=%23${fg}&bg_color=%23${bg}&error_correction=${ec}&dot_style=${dot}`;
-        if (grad) {
-            url += `&gradient_color=%23${grad}&gradient_direction=${dir}`;
-        }
-        if (transp) {
-            url += "&transparent_bg=1";
-        }
-        return url;
-    }
-
-    function livePreview() {
-        document.getElementById("qr-preview").src = previewUrl(false, "png");
-        document.getElementById("dl-png").href = previewUrl(false, "png");
-        document.getElementById("dl-png-transp").href = previewUrl(true, "png");
-        document.getElementById("dl-svg").href = previewUrl(false, "svg");
-    }
-
-    function toggleGradient() {
-        const enabled = document.getElementById("enable_gradient").checked;
-        document.getElementById("gradient_dir_row").style.display = enabled ? "block" : "none";
-        livePreview();
-    }
-
-    function onLogoChange() {
-        const file = document.getElementById("logo_file").files[0];
-        if (file) {
-            document.getElementById("error_correction").value = "H";
-            document.getElementById("ec-warning").style.display = "block";
-        } else {
-            document.getElementById("ec-warning").style.display = "none";
-        }
-        livePreview();
-    }
-
-    function resetDefaults() {
-        document.getElementById("fg_color").value = "#000000";
-        document.getElementById("bg_color").value = "#ffffff";
-        document.getElementById("gradient_color").value = "#00C853";
-        document.getElementById("enable_gradient").checked = false;
-        document.getElementById("transparent_bg").checked = false;
-        document.getElementById("error_correction").value = "M";
-        document.getElementById("dot_style").value = "square";
-        document.getElementById("gradient_dir_row").style.display = "none";
-        document.getElementById("ec-warning").style.display = "none";
-        livePreview();
-    }
-
-    livePreview();
+<script>
+function previewUrl(transparent, fmt) {
+  var fg = document.getElementById("fg_color").value.replace("#", "");
+  var bg = document.getElementById("bg_color").value.replace("#", "");
+  var ec = document.getElementById("error_correction").value;
+  var dot = document.getElementById("dot_style").value;
+  var dir = document.getElementById("gradient_direction").value;
+  var gradEnabled = document.getElementById("enable_gradient").checked;
+  var grad = gradEnabled ? document.getElementById("gradient_color").value.replace("#", "") : "";
+  var transp = transparent || document.getElementById("transparent_bg").checked;
+  var format = fmt || "png";
+  var url = "{{ url_for('dashboard.dashboard_links.qr_code', slug=link.slug) }}?scale=10&format=" + format + "&fg_color=%23" + fg + "&bg_color=%23" + bg + "&error_correction=" + ec + "&dot_style=" + dot;
+  if (grad) url += "&gradient_color=%23" + grad + "&gradient_direction=" + dir;
+  if (transp) url += "&transparent_bg=1";
+  return url;
+}
+function livePreview() {
+  document.getElementById("qr-preview").src = previewUrl(false, "png");
+  document.getElementById("dl-png").href = previewUrl(false, "png");
+  document.getElementById("dl-png-transp").href = previewUrl(true, "png");
+  document.getElementById("dl-svg").href = previewUrl(false, "svg");
+}
+function toggleGradient() {
+  var enabled = document.getElementById("enable_gradient").checked;
+  document.getElementById("gradient_dir_row").style.display = enabled ? "block" : "none";
+  livePreview();
+}
+function onLogoChange() {
+  var file = document.getElementById("logo_file").files[0];
+  if (file) {
+    document.getElementById("error_correction").value = "H";
+    document.getElementById("ec-warning").style.display = "block";
+  } else {
+    document.getElementById("ec-warning").style.display = "none";
+  }
+  livePreview();
+}
+function resetDefaults() {
+  document.getElementById("fg_color").value = "#000000";
+  document.getElementById("bg_color").value = "#ffffff";
+  document.getElementById("gradient_color").value = "#00C853";
+  document.getElementById("enable_gradient").checked = false;
+  document.getElementById("grad-toggle").classList.remove("enabled");
+  document.getElementById("transparent_bg").checked = false;
+  document.getElementById("transp-toggle").classList.remove("enabled");
+  document.getElementById("error_correction").value = "M";
+  document.getElementById("dot_style").value = "square";
+  document.getElementById("gradient_dir_row").style.display = "none";
+  document.getElementById("ec-warning").style.display = "none";
+  livePreview();
+}
+// toggle switches sync to checkboxes
+document.getElementById("transp-toggle").addEventListener("click", function (e) {
+  if (e.target.tagName === "INPUT") return;
+  this.classList.toggle("enabled");
+  document.getElementById("transparent_bg").checked = this.classList.contains("enabled");
+  livePreview();
+});
+document.getElementById("grad-toggle").addEventListener("click", function (e) {
+  if (e.target.tagName === "INPUT") return;
+  this.classList.toggle("enabled");
+  document.getElementById("enable_gradient").checked = this.classList.contains("enabled");
+  toggleGradient();
+});
+livePreview();
 </script>
 {% endblock %}

@@ -4,7 +4,9 @@ from pathlib import Path
 
 from dotenv import set_key
 from flask import Blueprint, current_app, flash, make_response, redirect, render_template, request, url_for
-from flask_login import login_required
+from flask import g
+
+from ...auth_middleware import workspace_required
 from sqlalchemy import distinct, func
 from werkzeug.utils import secure_filename
 
@@ -101,19 +103,21 @@ def _link_form_values(form):
 
 @bp.route("/")
 @bp.route("")
-@login_required
+@workspace_required()
 def dashboard_home():
-    links = Link.query.order_by(Link.created_at.desc()).all()
-    visits = Visit.query.order_by(Visit.timestamp.desc()).limit(25).all()
+    ws_id = g.workspace.id
+    links = Link.query.filter_by(workspace_id=ws_id).order_by(Link.created_at.desc()).all()
+    visits = Visit.query.filter_by(workspace_id=ws_id).order_by(Visit.timestamp.desc()).limit(25).all()
     priority_visits = (
-        Visit.query.filter(db.or_(Visit.risk_score >= 50, Visit.cluster_conflict.is_(True)))
+        Visit.query.filter_by(workspace_id=ws_id)
+        .filter(db.or_(Visit.risk_score >= 50, Visit.cluster_conflict.is_(True)))
         .order_by(Visit.timestamp.desc())
         .limit(6)
         .all()
     )
     identified_visitors = (
         db.session.query(func.count(distinct(Visit.email)))
-        .filter(Visit.email.isnot(None))
+        .filter(Visit.workspace_id == ws_id, Visit.email.isnot(None))
         .scalar()
         or 0
     )
@@ -123,20 +127,23 @@ def dashboard_home():
         visits=visits,
         priority_visits=priority_visits,
         identified_visitors=identified_visitors,
-        high_risk_visits=Visit.query.filter(Visit.risk_score >= 50).count(),
-        reviewed_visits=Visit.query.filter(Visit.review_label.isnot(None)).count(),
-        total_visits=Visit.query.count(),
+        high_risk_visits=Visit.query.filter_by(workspace_id=ws_id).filter(Visit.risk_score >= 50).count(),
+        reviewed_visits=Visit.query.filter_by(workspace_id=ws_id).filter(Visit.review_label.isnot(None)).count(),
+        total_visits=Visit.query.filter_by(workspace_id=ws_id).count(),
     )
 
 
 @bp.route("/links")
-@login_required
+@workspace_required()
 def links():
-    return render_template("links.html", links=Link.query.order_by(Link.created_at.desc()).all())
+    return render_template(
+        "links.html",
+        links=Link.query.filter_by(workspace_id=g.workspace.id).order_by(Link.created_at.desc()).all(),
+    )
 
 
 @bp.route("/create", methods=["POST"])
-@login_required
+@workspace_required("editor")
 def create_link():
     slug = sanitize(request.form.get("slug"), 20)
     destination = sanitize(request.form.get("destination"), 2048)
@@ -170,6 +177,7 @@ def create_link():
             require_email=parse_bool(request.form.get("require_email")),
             email_policy=sanitize(request.form.get("email_policy"), 20) or "all",
             block_bots=True,
+            workspace_id=g.workspace.id,
         )
     except ValueError as exc:
         flash(str(exc), "error")
@@ -183,7 +191,7 @@ def create_link():
 
 
 @bp.route("/create_full", methods=["GET", "POST"])
-@login_required
+@workspace_required("editor")
 def create_full():
     if request.method == "POST":
         slug = sanitize(request.form.get("slug"), 20)
@@ -209,7 +217,7 @@ def create_full():
             flash(str(exc), "error")
             return redirect(url_for("dashboard.dashboard_links.create_full"))
 
-        link = Link(slug=slug, **values)
+        link = Link(slug=slug, workspace_id=g.workspace.id, **values)
         password = request.form.get("password", "")
         if sanitize(password, 255):
             import hashlib
@@ -225,9 +233,9 @@ def create_full():
 
 
 @bp.route("/delete/<int:link_id>", methods=["POST"])
-@login_required
+@workspace_required("editor")
 def delete_link(link_id: int):
-    link = db.session.get(Link, link_id)
+    link = Link.query.filter_by(id=link_id, workspace_id=g.workspace.id).first()
     if link is not None:
         slug = link.slug
         db.session.delete(link)
@@ -238,9 +246,9 @@ def delete_link(link_id: int):
 
 
 @bp.route("/edit/<slug>", methods=["GET", "POST"])
-@login_required
+@workspace_required("editor")
 def edit_link(slug: str):
-    link = Link.query.filter_by(slug=slug).first_or_404()
+    link = Link.query.filter_by(slug=slug, workspace_id=g.workspace.id).first_or_404()
 
     if request.method == "POST":
         try:
@@ -270,9 +278,9 @@ def edit_link(slug: str):
 
 
 @bp.route("/qr/<slug>")
-@login_required
+@workspace_required()
 def qr_code(slug: str):
-    link = Link.query.filter_by(slug=slug).first_or_404()
+    link = Link.query.filter_by(slug=slug, workspace_id=g.workspace.id).first_or_404()
     config = parse_config(link.qr_config)
     scale = min(_coerce_int(request.args.get("scale"), default=10, minimum=1, maximum=20), 20)
     fmt = sanitize(request.args.get("format"), 10).lower() or "png"
@@ -306,16 +314,16 @@ def qr_code(slug: str):
 
 
 @bp.route("/qr_view/<slug>")
-@login_required
+@workspace_required()
 def qr_view(slug: str):
-    link = Link.query.filter_by(slug=slug).first_or_404()
+    link = Link.query.filter_by(slug=slug, workspace_id=g.workspace.id).first_or_404()
     return render_template("qr_view.html", link=link, qr_config=parse_config(link.qr_config))
 
 
 @bp.route("/qr_save/<slug>", methods=["POST"])
-@login_required
+@workspace_required("editor")
 def qr_save(slug: str):
-    link = Link.query.filter_by(slug=slug).first_or_404()
+    link = Link.query.filter_by(slug=slug, workspace_id=g.workspace.id).first_or_404()
     config = parse_config(link.qr_config)
 
     for key in ("fg_color", "bg_color", "gradient_direction", "error_correction", "dot_style"):
@@ -362,7 +370,7 @@ def qr_save(slug: str):
 
 
 @bp.route("/settings", methods=["GET", "POST"])
-@login_required
+@workspace_required("admin")
 def settings():
     data_dir = Path(current_app.root_path) / "data"
     data_dir.mkdir(parents=True, exist_ok=True)

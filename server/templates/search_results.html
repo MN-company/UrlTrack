@@ -1,69 +1,62 @@
 {% extends "base.html" %}
-
-{% block breadcrumb %}Search / "{{ q }}"{% endblock %}
+{% block title %} — Search{% endblock %}
 
 {% block content %}
-<div class="card" style="margin-bottom:1.25rem;">
-    <div class="card-header">
-        <span class="card-title"><i class="fa-solid fa-magnifying-glass"></i> Search results</span>
-        <div class="badge badge-blue">{{ visits|length + links|length }}</div>
-    </div>
-    <p style="color:var(--text-secondary);margin:0;">Query: <strong>{{ q }}</strong></p>
-</div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Search</p>
+    <h1>Results for "{{ q }}"</h1>
+  </div>
+  <div class="actions">
+    <span class="badge info">{{ visits|length + links|length }} results</span>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.global_timeline', q=q) }}">Open in timeline</a>
+  </div>
+</header>
 
 {% if visits %}
-<div class="card" style="margin-bottom:1.25rem;">
-    <div class="card-header">
-        <span class="card-title">Visits</span>
-    </div>
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Time</th>
-                <th>IP</th>
-                <th>Email</th>
-                <th>Link</th>
-                <th>Fingerprint</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for visit in visits %}
-            <tr>
-                <td class="text-mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                <td>{{ visit.ip_address }}</td>
-                <td>{{ visit.email or '-' }}</td>
-                <td><a href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) }}">/{{ visit.link.slug }}</a></td>
-                <td>
-                    {% if visit.canvas_hash %}
-                    <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.canvas_hash) }}" class="text-accent">{{ visit.canvas_hash[:10] }}</a>
-                    {% else %}
-                    {{ visit.etag or '-' }}
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
+<section class="panel" style="margin-bottom:14px">
+  <div class="panel-head"><h2>Visits</h2><span class="badge info">{{ visits|length }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>IP</th><th>Email</th><th>Link</th><th>Fingerprint</th></tr></thead>
+      <tbody>
+        {% for visit in visits %}
+        <tr>
+          <td class="mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') if visit.timestamp else '—' }}</td>
+          <td class="mono">{{ visit.ip_address or '—' }}</td>
+          <td>{{ visit.email or '—' }}</td>
+          <td class="mono"><a href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) }}" style="color:var(--fg)">{{ visit.link.slug if visit.link else '—' }}</a></td>
+          <td>
+            {% if visit.canvas_hash %}
+            <a class="mono" style="color:var(--info)" href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.canvas_hash) }}">{{ visit.canvas_hash[:10] }}</a>
+            {% else %}{{ visit.etag or '—' }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
-</div>
+  </div>
+</section>
 {% endif %}
 
 {% if links %}
-<div class="card">
-    <div class="card-header">
-        <span class="card-title">Links</span>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:1rem;">
-        {% for link in links %}
-        <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}" class="card" style="text-decoration:none;background:rgba(0,0,0,0.18);">
-            <div style="font-weight:700;">/{{ link.slug }}</div>
-            <div style="margin-top:0.35rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ link.destination }}</div>
-        </a>
-        {% endfor %}
-    </div>
-</div>
+<section class="panel pad">
+  <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Links</h2><span class="badge info">{{ links|length }}</span></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+    {% for link in links %}
+    <a class="queue-item" href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}">
+      <div class="queue-title mono">{{ link.slug }}</div>
+      <div class="queue-meta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ link.destination }}</div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 
 {% if not visits and not links %}
-<div class="card">No results found.</div>
+<section class="panel pad" style="text-align:center">
+  <p class="muted">No results found.</p>
+  <p class="muted" style="font-size:13px">Try a shorter IP, email domain, slug, or fingerprint prefix.</p>
+</section>
 {% endif %}
 {% endblock %}

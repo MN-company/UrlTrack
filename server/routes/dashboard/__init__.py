@@ -9,6 +9,7 @@ from .links import bp as links_bp
 from .passkey import bp as passkey_bp
 from .security import bp as security_bp
 from .stats import bp as stats_bp
+from .team import bp as team_bp
 
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
@@ -19,6 +20,7 @@ bp.register_blueprint(exports_bp)
 bp.register_blueprint(stats_bp)
 bp.register_blueprint(security_bp)
 bp.register_blueprint(passkey_bp)
+bp.register_blueprint(team_bp)
 
 
 def md5_filter(value):

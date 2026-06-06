@@ -1,84 +1,64 @@
 {% extends "base.html" %}
-
-{% block breadcrumb %}Campaigns / Intelligence Links{% endblock %}
+{% block title %} — Links{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <span class="card-title"><i class="fa-solid fa-link"></i> Active Campaigns</span>
-        <a href="{{ url_for('dashboard.dashboard_links.create_full') }}" class="btn btn-primary">
-            <i class="fa-solid fa-plus"></i> New Campaign
-        </a>
-    </div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">{{ current_workspace.name if current_workspace else 'UrlTrack' }} / Campaigns</p>
+    <h1>Tracking links</h1>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">Timeline</a>
+    <a class="btn primary" href="{{ url_for('dashboard.dashboard_links.create_full') }}">New link</a>
+  </div>
+</header>
 
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Slug / Target</th>
-                <th>Defenses</th>
-                <th>Intercepts</th>
-                <th>Last Active</th>
-                <th style="text-align: right;">Controls</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for link in links %}
-            <tr>
-                <td>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <span class="text-accent"
-                            style="font-weight: 600; font-family: 'JetBrains Mono', monospace;">/{{ link.slug }}</span>
-                        <a href="{{ url_for('public.redirect_to_url', slug=link.slug) }}" target="_blank"
-                            style="color: var(--text-muted); font-size: 0.8rem;">
-                            <i class="fa-solid fa-arrow-up-right-from-square"></i>
-                        </a>
-                    </div>
-                    {% if link.public_masked_url %}
-                    <div style="font-size: 0.75rem; color: var(--accent-success); margin-top: 2px;">
-                        <i class="fa-solid fa-mask"></i> {{ link.public_masked_url }}
-                    </div>
-                    {% endif %}
-                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-                        &rarr; {{ link.destination[:40] }}...
-                    </div>
-                </td>
-                <td>
-                    <div style="display: flex; gap: 0.25rem;">
-                        {% if link.enable_captcha %}
-                        <span class="badge badge-warning" title="Captcha Enabled">Bot</span>
-                        {% endif %}
-                        {% if link.block_vpn %}
-                        <span class="badge badge-danger" title="VPN Blocking Active">VPN</span>
-                        {% endif %}
-                        {% if link.require_email %}
-                        <span class="badge badge-blue">Gate</span>
-                        {% endif %}
-                        {% if not link.enable_captcha and not link.block_vpn and not link.require_email %}
-                        <span class="badge badge-success">Open</span>
-                        {% endif %}
-                    </div>
-                </td>
-                <td>
-                    <div class="stat-value" style="font-size: 1.25rem;">{{ link.visits|length }}</div>
-                </td>
-                <td style="font-size: 0.85rem; color: var(--text-secondary);">
-                    {{ link.created_at.strftime('%Y-%m-%d') }}
-                </td>
-                <td style="text-align: right;">
-                    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-                        <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}" class="btn btn-ghost"
-                            style="padding: 0.4rem;">
-                            <i class="fa-solid fa-chart-pie"></i> Intel
-                        </a>
-                        <a href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}"
-                            class="btn btn-ghost" style="padding: 0.4rem;">
-                            <i class="fa-solid fa-sliders"></i> Edit
-                        </a>
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
+<section class="panel">
+  <div class="panel-head">
+    <h2>Active campaigns</h2>
+    <span class="badge info">{{ links|length }}</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Slug</th>
+          <th>Destination</th>
+          <th>Defenses</th>
+          <th>Created</th>
+          <th style="text-align:right">Controls</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for link in links %}
+        <tr>
+          <td class="mono">
+            <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}" style="color:var(--fg)">{{ link.slug }}</a>
+          </td>
+          <td class="muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis">{{ link.destination }}</td>
+          <td>
+            {% if link.enable_captcha %}<span class="badge warn">Captcha</span>{% endif %}
+            {% if link.block_vpn %}<span class="badge danger">Block VPN</span>{% endif %}
+            {% if link.require_email %}<span class="badge info">Email gate</span>{% endif %}
+            {% if link.password_hash %}<span class="badge">Password</span>{% endif %}
+            {% if link.block_bots %}<span class="badge">Bot block</span>{% endif %}
+          </td>
+          <td class="muted">{{ link.created_at.strftime('%b %d') if link.created_at else '—' }}</td>
+          <td style="text-align:right">
+            <a class="badge info" href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}">Stats</a>
+            <a class="badge" href="{{ url_for('dashboard.dashboard_links.qr_view', slug=link.slug) }}">QR</a>
+            <a class="badge" href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}">Edit</a>
+            <form method="POST" action="{{ url_for('dashboard.dashboard_links.delete_link', link_id=link.id) }}" style="display:inline" onsubmit="return confirm('Delete /{{ link.slug }}?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="badge danger" style="border:none;cursor:pointer;background:transparent">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted" style="text-align:center;padding:32px">No links yet. <a href="{{ url_for('dashboard.dashboard_links.create_full') }}">Create your first link.</a></td></tr>
+        {% endfor %}
+      </tbody>
     </table>
-</div>
+  </div>
+</section>
 {% endblock %}

@@ -1,29 +1,26 @@
 {% extends "base.html" %}
-
-{% block breadcrumb %}Security / Backup Codes{% endblock %}
+{% block title %} — Backup Codes{% endblock %}
 
 {% block content %}
-<div style="max-width:680px;margin:2rem auto;">
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-life-ring"></i> Backup codes</span>
-        </div>
-        <p style="color:var(--text-secondary);margin-bottom:1rem;">
-            Save these one-time codes somewhere safe. Each code works only once.
-        </p>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Security / Backup codes</p>
+    <h1>Recovery codes</h1>
+  </div>
+</header>
 
-        <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:0.75rem;">
-            {% for code in backup_codes %}
-            <div class="toggle-row">
-                <label>Recovery code</label>
-                <span class="text-mono">{{ code }}</span>
-            </div>
-            {% endfor %}
-        </div>
-
-        <div style="margin-top:1.5rem;display:flex;justify-content:flex-end;">
-            <a href="{{ url_for('dashboard.dashboard_security.security_settings') }}" class="btn btn-primary">Back to security</a>
-        </div>
+<div style="max-width:680px;margin:0 auto;width:100%">
+  <div class="panel pad">
+    <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Backup codes</h2><span class="badge warn">One-time use</span></div>
+    <p class="muted">Save these somewhere safe. Each code works only once.</p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px">
+      {% for code in backup_codes %}
+      <div class="rule-row"><span class="muted">Recovery</span><span class="mono">{{ code }}</span></div>
+      {% endfor %}
     </div>
+    <div style="margin-top:18px;display:flex;justify-content:flex-end">
+      <a href="{{ url_for('dashboard.dashboard_security.security_settings') }}" class="btn primary">Back to security</a>
+    </div>
+  </div>
 </div>
 {% endblock %}

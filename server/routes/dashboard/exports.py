@@ -3,9 +3,9 @@ import html
 import json
 from io import StringIO
 
-from flask import Blueprint, make_response
-from flask_login import login_required
+from flask import Blueprint, g, make_response
 
+from ...auth_middleware import workspace_required
 from ...extensions import limiter
 from ...models import Link, Visit
 
@@ -25,7 +25,7 @@ def _html_safe(value) -> str:
 
 
 @bp.route("/export/<slug>/json")
-@login_required
+@workspace_required("analyst")
 @limiter.limit("5 per minute")
 def export_json(slug):
     link = Link.query.filter_by(slug=slug).first_or_404()
@@ -46,7 +46,7 @@ def export_json(slug):
 
 
 @bp.route("/export/<slug>/csv")
-@login_required
+@workspace_required("analyst")
 @limiter.limit("5 per minute")
 def export_csv(slug):
     link = Link.query.filter_by(slug=slug).first_or_404()
@@ -104,7 +104,7 @@ def export_csv(slug):
 
 
 @bp.route("/export/<slug>/pdf")
-@login_required
+@workspace_required("analyst")
 @limiter.limit("5 per minute")
 def export_pdf(slug):
     link = Link.query.filter_by(slug=slug).first_or_404()

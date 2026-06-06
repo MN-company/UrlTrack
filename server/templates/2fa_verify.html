@@ -1,106 +1,40 @@
-{% extends "base.html" %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UrlTrack — Verify</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/urltrack.css') }}">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+</head>
+<body>
+  <main class="launcher">
+    <div style="max-width:440px;margin:0 auto;width:100%">
+      <div class="brand" style="padding-left:0;margin-bottom:18px"><span class="brand-mark">U</span> UrlTrack</div>
+      <p class="eyebrow">Verify second factor</p>
+      <h1>Confirm your identity.</h1>
+      <p>Account: <strong>{{ email }}</strong></p>
 
-{% block content %}
-<div style="max-width:480px;margin:3rem auto;">
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-shield-halved"></i> Verify second factor</span>
-        </div>
-        <p style="color:var(--text-secondary);margin-bottom:1.25rem;">
-            Account: <strong>{{ email }}</strong>
-        </p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+      <div class="panel pad" style="margin:14px 0;border-color:{% if category=='error' %}var(--danger){% else %}var(--warn){% endif %}">{{ message }}</div>
+      {% endfor %}
+      {% endwith %}
 
+      <div class="panel pad" style="margin-top:18px">
         <form method="POST" id="totpForm">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="totp_code">Authenticator code</label>
-            <input id="totp_code" name="totp_code" type="text" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required autofocus>
-            <button type="submit" class="btn btn-primary w-full">Verify code</button>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field"><label>Authenticator code</label><input class="input mono" name="totp_code" type="text" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required autofocus></div>
+          <button type="submit" class="btn primary" style="width:100%;margin-top:12px">Verify code</button>
         </form>
-
-        <div style="height:1px;background:var(--border-subtle);margin:1.5rem 0;"></div>
-
+        <div style="height:1px;background:var(--border);margin:18px 0"></div>
         <form method="POST" id="backupForm">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="backup_code">Backup code</label>
-            <input id="backup_code" name="backup_code" type="text" placeholder="Paste a recovery code">
-            <button type="submit" class="btn btn-ghost w-full">Use backup code</button>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field"><label>Backup code</label><input class="input mono" name="backup_code" type="text" placeholder="Paste a recovery code"></div>
+          <button type="submit" class="btn" style="width:100%;margin-top:12px">Use backup code</button>
         </form>
-
-        {% if has_passkey %}
-        <div style="height:1px;background:var(--border-subtle);margin:1.5rem 0;"></div>
-        <button type="button" onclick="usePasskey()" class="btn btn-ghost w-full">
-            <i class="fa-solid fa-fingerprint"></i> Use passkey
-        </button>
-        {% endif %}
+      </div>
     </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script nonce="{{ csp_nonce|default('') }}">
-    function base64urlToArrayBuffer(value) {
-        const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-        const padding = '='.repeat((4 - (base64.length % 4)) % 4);
-        const binary = atob(base64 + padding);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        return bytes.buffer;
-    }
-
-    function arrayBufferToBase64url(buffer) {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    }
-
-    async function usePasskey() {
-        if (!window.PublicKeyCredential) {
-            alert('This browser does not support passkeys.');
-            return;
-        }
-
-        try {
-            const optionsResponse = await fetch("{{ url_for('auth.passkey_auth_options') }}", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: "{{ email }}" })
-            });
-            const options = await optionsResponse.json();
-            if (!optionsResponse.ok) throw new Error(options.error || 'Unable to start passkey login.');
-
-            options.challenge = base64urlToArrayBuffer(options.challenge);
-            if (options.allowCredentials) {
-                options.allowCredentials = options.allowCredentials.map((credential) => ({
-                    ...credential,
-                    id: base64urlToArrayBuffer(credential.id)
-                }));
-            }
-
-            const assertion = await navigator.credentials.get({ publicKey: options });
-            const verifyResponse = await fetch("{{ url_for('auth.passkey_auth_verify') }}", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: assertion.id,
-                    rawId: arrayBufferToBase64url(assertion.rawId),
-                    type: assertion.type,
-                    response: {
-                        authenticatorData: arrayBufferToBase64url(assertion.response.authenticatorData),
-                        clientDataJSON: arrayBufferToBase64url(assertion.response.clientDataJSON),
-                        signature: arrayBufferToBase64url(assertion.response.signature),
-                        userHandle: assertion.response.userHandle ? arrayBufferToBase64url(assertion.response.userHandle) : null
-                    }
-                })
-            });
-            const result = await verifyResponse.json();
-            if (!verifyResponse.ok || !result.verified) {
-                throw new Error(result.error || 'Verification failed.');
-            }
-            window.location.href = result.redirect;
-        } catch (error) {
-            alert(error.message);
-        }
-    }
-</script>
-{% endblock %}
+  </main>
+</body>
+</html>

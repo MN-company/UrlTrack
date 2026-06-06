@@ -1,8 +1,9 @@
 import json
 from datetime import datetime
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
-from flask_login import login_required
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
+
+from ...auth_middleware import workspace_required
 
 from ...extensions import db
 from ...models import Lead, Visit
@@ -63,9 +64,9 @@ def _reason_json(visit: Visit):
 
 
 @bp.route("/leads")
-@login_required
+@workspace_required("analyst")
 def leads_list():
-    leads = Lead.query.order_by(Lead.last_seen.desc().nullslast(), Lead.updated_at.desc()).all()
+    leads = Lead.query.filter_by(workspace_id=g.workspace.id).order_by(Lead.last_seen.desc().nullslast(), Lead.updated_at.desc()).all()
     lead_cards = []
     for lead in leads:
         visits = _lead_visits(lead, limit=30)
@@ -85,7 +86,7 @@ def leads_list():
 
 
 @bp.route("/leads/<int:lead_id>")
-@login_required
+@workspace_required("analyst")
 def lead_detail(lead_id):
     lead = db.session.get(Lead, lead_id)
     if not lead:
@@ -108,7 +109,7 @@ def lead_detail(lead_id):
 
 
 @bp.route("/leads/<int:lead_id>/update", methods=["POST"])
-@login_required
+@workspace_required("editor")
 def lead_update(lead_id):
     lead = db.session.get(Lead, lead_id)
     if not lead:
@@ -121,7 +122,7 @@ def lead_update(lead_id):
 
 
 @bp.route("/visits/<int:visit_id>/review", methods=["POST"])
-@login_required
+@workspace_required("editor")
 def visit_review(visit_id):
     visit = db.session.get(Visit, visit_id)
     if not visit:

@@ -1,169 +1,140 @@
 {% extends "base.html" %}
+{% block title %} — Lead{% endblock %}
 
 {% block content %}
-<div class="dashboard-grid">
-    <div class="card">
-        <div class="card-header">
-            <div>
-                <h2>{{ lead.label or "Lead Detail" }}</h2>
-                <p style="color:var(--text-muted); margin:6px 0 0;">{{ lead.email or "Anonymous visitor cluster" }}</p>
-            </div>
-            {% if lead.is_vpn %}
-            <span class="badge badge-danger">VPN</span>
-            {% else %}
-            <span class="badge badge-success">Clean</span>
-            {% endif %}
-        </div>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px;">
-            <div><strong>Email</strong><div>{{ lead.email or "-" }}</div></div>
-            <div><strong>Country / City</strong><div>{{ lead.country or "-" }}{% if lead.city %} · {{ lead.city }}{% endif %}</div></div>
-            <div><strong>Org</strong><div>{{ lead.org or "-" }}</div></div>
-            <div><strong>Device</strong><div>{{ lead.device_type or "-" }} / {{ lead.os_family or "-" }}</div></div>
-            <div><strong>Total Visits</strong><div>{{ lead.total_visits }}</div></div>
-            <div><strong>Last Seen</strong><div>{{ lead.last_seen.strftime('%Y-%m-%d %H:%M:%S') if lead.last_seen else '-' }}</div></div>
-            <div><strong>Avg Identity</strong><div>{{ avg_identity if avg_identity is not none else "-" }}%</div></div>
-            <div><strong>Avg Risk</strong><div>{{ avg_risk if avg_risk is not none else "-" }}%</div></div>
-        </div>
-    </div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Lead file / {{ current_workspace.name if current_workspace else 'UrlTrack' }}</p>
+    <h1>{{ lead.label or lead.email or lead.org or 'Anonymous cluster' }}</h1>
+    <p>{{ lead.email or 'No email' }}{% if avg_identity is not none %} · confidence {{ avg_identity }}{% endif %} · {{ lead.total_visits }} visits</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_leads.leads_list') }}">Back to leads</a>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_ai.ai_console') }}?message={{ ('Explain lead ' ~ (lead.email or lead.primary_canvas_hash or lead.id|string))|urlencode }}">Ask AI</a>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}{% if lead.email %}?q={{ lead.email|urlencode }}&group_by=email{% elif lead.primary_canvas_hash %}?q={{ lead.primary_canvas_hash|urlencode }}&group_by=canvas{% endif %}">Open graph</a>
+  </div>
+</header>
 
-    <div class="card">
-        <h3 style="margin-bottom:12px;">Deep Correlation</h3>
-        <div style="margin-bottom:14px;">
-            <strong>Canvas Hashes</strong>
-            <div style="margin-top:6px;">
-                {% for hash_value in canvas_hashes %}
-                <a class="badge badge-blue" style="margin-right:6px; display:inline-block; margin-bottom:6px;" href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=hash_value) }}">{{ hash_value }}</a>
-                {% else %}
-                <span style="color:var(--text-muted);">No hashes</span>
-                {% endfor %}
-            </div>
-        </div>
-        <div style="margin-bottom:14px;">
-            <strong>IPs</strong>
-            <div style="margin-top:6px;">
-                {% for ip in ips %}
-                <span class="badge badge-purple" style="margin-right:6px; display:inline-block; margin-bottom:6px;">{{ ip }}</span>
-                {% else %}
-                <span style="color:var(--text-muted);">No IPs</span>
-                {% endfor %}
-            </div>
-        </div>
+<section class="grid metrics">
+  <div class="panel metric compact">
+    <div class="label">Total visits</div>
+    <div class="value">{{ lead.total_visits }}</div>
+    <div class="delta">all campaigns</div>
+  </div>
+  <div class="panel metric compact">
+    <div class="label">Confidence</div>
+    <div class="value">{{ avg_identity if avg_identity is not none else '—' }}</div>
+    <div class="delta">identity match</div>
+  </div>
+  <div class="panel metric compact">
+    <div class="label">Avg risk</div>
+    <div class="value">{{ avg_risk if avg_risk is not none else '—' }}</div>
+    <div class="delta"><span class="badge {% if avg_risk and avg_risk >= 65 %}danger{% elif avg_risk and avg_risk >= 40 %}warn{% else %}success{% endif %}">{% if avg_risk and avg_risk >= 65 %}High{% elif avg_risk and avg_risk >= 40 %}Medium{% else %}Low{% endif %}</span></div>
+  </div>
+  <div class="panel metric compact">
+    <div class="label">Geo / device</div>
+    <div class="value" style="font-size:18px">{{ lead.country or '?' }}</div>
+    <div class="delta">{{ lead.os_family or '?' }} / {{ lead.device_type or '?' }}</div>
+  </div>
+  <div class="panel metric compact">
+    <div class="label">Org</div>
+    <div class="value" style="font-size:18px">{{ lead.org or '—' }}</div>
+    <div class="delta">{{ lead.city or '' }}</div>
+  </div>
+  <div class="panel metric compact">
+    <div class="label">Last seen</div>
+    <div class="value" style="font-size:18px">{{ lead.last_seen.strftime('%b %d') if lead.last_seen else '—' }}</div>
+    <div class="delta">{{ lead.last_seen.strftime('%H:%M UTC') if lead.last_seen else '' }}</div>
+  </div>
+</section>
+
+<section class="grid split" style="margin-top:14px">
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Visit timeline</h2>
+      <div class="actions">
+        <form method="GET" style="display:flex;gap:8px">
+          <select class="select" name="link_filter" style="width:auto" onchange="this.form.submit()">
+            <option value="">All links</option>
+            {% for slug in slugs %}
+            <option value="{{ slug }}" {% if request.args.get('link_filter') == slug %}selected{% endif %}>{{ slug }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </div>
+    <div class="timeline" style="padding:12px">
+      {% for visit in visits %}
+      <div class="timeline-item">
+        <span class="mono">{{ visit.timestamp.strftime('%b %d %H:%M') if visit.timestamp else '—' }}</span>
         <div>
-            <strong>Slugs Visited</strong>
-            <div style="margin-top:6px;">
-                {% for slug in slugs %}
-                <a class="badge badge-success" style="margin-right:6px; display:inline-block; margin-bottom:6px;" href="{{ url_for('dashboard.dashboard_stats.stats', slug=slug) }}">/{{ slug }}</a>
-                {% else %}
-                <span style="color:var(--text-muted);">No slugs</span>
-                {% endfor %}
-            </div>
+          <strong>
+            <span class="event-dot"></span>
+            {{ visit.link.slug if visit.link else 'Unknown link' }}
+            {% if visit.email %} · {{ visit.email }}{% endif %}
+          </strong>
+          <div class="muted">
+            {{ visit.country or '?' }} · {{ visit.os_family or '?' }} {{ visit.device_type or '' }}
+            {% if visit.is_vpn %} · VPN{% endif %}
+            {% if visit.dwell_ms %} · {{ (visit.dwell_ms // 1000) // 60 }}:{{ '%02d'|format((visit.dwell_ms // 1000) % 60) }} dwell{% endif %}
+          </div>
         </div>
+        <span class="badge {% if visit.risk_score and visit.risk_score >= 65 %}danger{% elif visit.risk_score and visit.risk_score >= 40 %}warn{% else %}success{% endif %}">
+          {% if visit.risk_score %}risk {{ visit.risk_score }}{% else %}visit{% endif %}
+        </span>
+      </div>
+      {% else %}
+      <div class="muted" style="text-align:center;padding:24px">No visits found</div>
+      {% endfor %}
     </div>
-</div>
+  </div>
 
-<div class="card" style="margin-top:1.5rem;">
-    <div class="card-header">
-        <div>
-            <h3 style="margin-bottom:4px;">AI-Ready Review Queue</h3>
-            <p style="color:var(--text-muted);margin:0;">Human labels become training data and also influence deterministic scoring for future matches.</p>
+  <aside class="grid">
+    <section class="panel">
+      <div class="panel-head"><h2>Related signals</h2></div>
+      <div class="queue">
+        {% if canvas_hashes %}
+        <div class="queue-item">
+          <div class="queue-title mono">canvas hashes</div>
+          <div class="queue-meta">{{ canvas_hashes|join(', ') }}</div>
         </div>
-        <a class="btn btn-ghost" href="{{ url_for('dashboard.dashboard_ai.ai_console') }}?message={{ ('Explain lead ' ~ (lead.email or lead.primary_canvas_hash or lead.id))|urlencode }}">Ask AI</a>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:1rem;">
-        {% for visit in visits %}
-        {% set reasons = reason_json(visit) %}
-        <div style="padding:1rem;border:1px solid rgba(148,163,184,0.16);border-radius:14px;background:rgba(15,23,42,0.34);">
-            <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;">
-                <div>
-                    <div class="text-mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</div>
-                    <div style="color:var(--text-secondary);font-size:0.85rem;margin-top:0.25rem;">
-                        /{{ visit.link.slug if visit.link else 'unknown' }} · {{ visit.email or visit.ip_address }} · {{ visit.city or 'Unknown' }}{% if visit.country %}, {{ visit.country }}{% endif %}
-                    </div>
-                </div>
-                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end;">
-                    <span class="badge badge-blue">ID {{ visit.identity_confidence if visit.identity_confidence is not none else 0 }}</span>
-                    {% if visit.risk_score and visit.risk_score >= 50 %}
-                    <span class="badge badge-danger">Risk {{ visit.risk_score }}</span>
-                    {% elif visit.risk_score and visit.risk_score > 0 %}
-                    <span class="badge badge-warning">Risk {{ visit.risk_score }}</span>
-                    {% else %}
-                    <span class="badge badge-success">Risk 0</span>
-                    {% endif %}
-                    {% if visit.beacon_received_at %}
-                    <span class="badge badge-success">Beacon</span>
-                    {% else %}
-                    <span class="badge badge-warning">No beacon</span>
-                    {% endif %}
-                    {% if visit.review_label %}
-                    <span class="badge badge-purple">{{ visit.review_label }}</span>
-                    {% endif %}
-                </div>
-            </div>
-
-            <div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;">
-                <div>
-                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Identity reasons</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
-                        {% for reason in reasons.get('identity', []) %}
-                        <span class="badge badge-blue">{{ reason }}</span>
-                        {% else %}
-                        <span class="text-muted">No strong identity evidence.</span>
-                        {% endfor %}
-                    </div>
-                </div>
-                <div>
-                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Risk reasons</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
-                        {% for reason in reasons.get('risk', []) %}
-                        <span class="badge badge-warning">{{ reason }}</span>
-                        {% else %}
-                        <span class="text-muted">No risk reasons.</span>
-                        {% endfor %}
-                    </div>
-                </div>
-                <div>
-                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.35rem;">Conflicts</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
-                        {% for reason in reasons.get('conflicts', []) %}
-                        <span class="badge badge-danger">{{ reason }}</span>
-                        {% else %}
-                        <span class="text-muted">No conflicts.</span>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-
-            <form method="POST" action="{{ url_for('dashboard.dashboard_leads.visit_review', visit_id=visit.id) }}" style="margin-top:0.9rem;display:grid;grid-template-columns:180px 1fr auto;gap:0.6rem;align-items:center;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <select name="review_label">
-                    <option value="">No label</option>
-                    {% for label in review_labels %}
-                    <option value="{{ label }}" {% if visit.review_label == label %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-                <input type="text" name="review_note" value="{{ visit.review_note or '' }}" placeholder="Optional analyst note">
-                <button class="btn btn-primary btn-sm" type="submit">Save review</button>
-            </form>
+        {% endif %}
+        {% if ips %}
+        <div class="queue-item">
+          <div class="queue-title mono">known IPs</div>
+          <div class="queue-meta">{{ ips[:4]|join(', ') }}{% if ips|length > 4 %} +{{ ips|length - 4 }} more{% endif %}</div>
         </div>
-        {% else %}
-        <div class="text-muted">No correlated visits for this lead yet.</div>
-        {% endfor %}
-    </div>
-</div>
+        {% endif %}
+        {% if slugs %}
+        <div class="queue-item">
+          <div class="queue-title mono">campaigns visited</div>
+          <div class="queue-meta">{{ slugs|join(', ') }}</div>
+        </div>
+        {% endif %}
+        {% if lead.is_vpn %}
+        <div class="queue-item">
+          <div class="queue-title mono">VPN / proxy detected</div>
+          <div class="queue-meta">Traffic routed through anonymizer.</div>
+        </div>
+        {% endif %}
+      </div>
+    </section>
 
-<div class="card" style="margin-top:1.5rem;">
-    <h3 style="margin-bottom:12px;">CRM Notes</h3>
-    <form method="POST" action="{{ url_for('dashboard.dashboard_leads.lead_update', lead_id=lead.id) }}">
+    <section class="panel">
+      <div class="panel-head"><h2>Notes</h2></div>
+      <form method="POST" action="{{ url_for('dashboard.dashboard_leads.lead_update', lead_id=lead.id) }}" style="padding:12px;display:grid;gap:10px">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group">
-            <label>Label</label>
-            <input type="text" name="label" value="{{ lead.label or '' }}" placeholder="hot, warm, vip...">
+        <div class="field">
+          <label>Label</label>
+          <input class="input" name="label" value="{{ lead.label or '' }}" placeholder="hot, warm, vip …">
         </div>
-        <div class="form-group">
-            <label>Notes</label>
-            <textarea name="notes" rows="6" style="width:100%;background:var(--bg-input);border:1px solid var(--border-subtle);color:var(--text-primary);padding:12px 14px;border-radius:8px;">{{ lead.notes or '' }}</textarea>
+        <div class="field">
+          <label>Notes</label>
+          <textarea class="textarea" name="notes" rows="4">{{ lead.notes or '' }}</textarea>
         </div>
-        <button type="submit" class="btn btn-primary">Save Lead</button>
-    </form>
-</div>
+        <button type="submit" class="btn primary">Save</button>
+      </form>
+    </section>
+  </aside>
+</section>
 {% endblock %}

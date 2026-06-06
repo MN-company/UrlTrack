@@ -9,7 +9,7 @@ from user_agents import parse
 
 from ..config import Config
 from ..extensions import cache, csrf, db, limiter, log_queue
-from ..models import Link, User, Visit
+from ..models import Link, Visit
 from ..services.thumbmark import store_thumbmark_payload
 from ..utils import (
     anonymize_ip,
@@ -68,10 +68,19 @@ _CLOUD_KEYWORDS = (
 )
 
 
+@bp.route("/health", methods=["GET"])
+def health():
+    return ("ok", 200)
+
+
 @bp.route("/", methods=["GET"])
 def index():
-    if Config.ADMIN_BOOTSTRAP_ENABLED and User.query.count() == 0:
-        return redirect(url_for("auth.setup"))
+    try:
+        from ..models import Workspace
+        if Workspace.query.count() == 0:
+            return redirect(url_for("auth.register"))
+    except Exception:
+        pass
     return redirect(url_for("auth.login"))
 
 
@@ -254,6 +263,7 @@ def redirect_to_url(slug):
 
     visit = Visit(
         link_id=link_data["id"],
+        workspace_id=link_data.get("workspace_id"),
         ip_address=client_ip,
         user_agent=ua_string,
         referrer=request.referrer,

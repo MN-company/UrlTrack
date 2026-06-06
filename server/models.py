@@ -53,10 +53,14 @@ class Link(DatabaseModel):
 
     public_masked_url: Mapped[Optional[str]] = mapped_column(String(512))
     qr_config: Mapped[Optional[str]] = mapped_column(Text)
+    flow_config: Mapped[Optional[str]] = mapped_column(Text)
     require_email: Mapped[bool] = mapped_column(Boolean, default=False)
     email_policy: Mapped[str] = mapped_column(String(20), default="all")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     followup_notified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    workspace_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("workspace.id", ondelete="SET NULL"), index=True
+    )
 
     visits: Mapped[List["Visit"]] = relationship(
         back_populates="link",
@@ -177,6 +181,9 @@ class Visit(DatabaseModel):
     is_proxy: Mapped[bool] = mapped_column(Boolean, default=False)
     is_hosting: Mapped[bool] = mapped_column(Boolean, default=False)
     is_mobile: Mapped[bool] = mapped_column(Boolean, default=False)
+    workspace_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("workspace.id", ondelete="SET NULL"), index=True
+    )
 
     link: Mapped["Link"] = relationship(back_populates="visits")
     visitor: Mapped[Optional["Visitor"]] = relationship(
@@ -209,6 +216,9 @@ class Visitor(DatabaseModel):
     known_thumbmark_visitor_ids: Mapped[Optional[str]] = mapped_column(Text)
     thumbmark_api_calls_count: Mapped[int] = mapped_column(Integer, default=0)
     thumbmark_api_confidence_avg: Mapped[Optional[float]] = mapped_column(Float)
+    workspace_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("workspace.id", ondelete="SET NULL"), index=True
+    )
 
     visits: Mapped[List["Visit"]] = relationship(
         "Visit",
@@ -238,6 +248,9 @@ class VisitorSignal(DatabaseModel):
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     occurrence_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    workspace_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("workspace.id", ondelete="SET NULL"), index=True
+    )
 
     visitor: Mapped["Visitor"] = relationship("Visitor", back_populates="signals")
 
@@ -262,6 +275,9 @@ class Lead(DatabaseModel):
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     label: Mapped[Optional[str]] = mapped_column(String(128))
+    workspace_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("workspace.id", ondelete="SET NULL"), index=True
+    )
 
 
 class User(UserMixin, DatabaseModel):
@@ -299,3 +315,41 @@ class SetupState(DatabaseModel):
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
     )
+
+
+class Workspace(DatabaseModel):
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    owner_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    settings_json: Mapped[Optional[str]] = mapped_column(Text)
+
+    members: Mapped[List["WorkspaceMember"]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+
+
+class WorkspaceMember(DatabaseModel):
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "user_email", name="uq_workspace_member"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspace.id", ondelete="CASCADE"), nullable=False
+    )
+    user_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="editor")
+    invited_by: Mapped[Optional[str]] = mapped_column(String(255))
+    invited_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    joined_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    invite_token: Mapped[Optional[str]] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+
+    workspace: Mapped["Workspace"] = relationship(back_populates="members")

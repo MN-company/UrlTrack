@@ -1,274 +1,172 @@
 {% extends "base.html" %}
+{% block title %} — Edit{% endblock %}
 
 {% block head %}
-<style>
-    .tab-nav {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-        border-bottom: var(--border);
-        padding-bottom: 10px;
-    }
-
-    .tab-btn {
-        background: none;
-        border: none;
-        color: var(--text-sec);
-        padding: 8px 16px;
-        cursor: pointer;
-        font-size: 1rem;
-        border-radius: 6px;
-    }
-
-    .tab-btn.active {
-        background: rgba(0, 255, 157, 0.1);
-        color: var(--accent);
-        font-weight: 600;
-    }
-
-    .tab-content {
-        display: none;
-    }
-
-    .tab-content.active {
-        display: block;
-    }
-
-    .form-group {
-        margin-bottom: 15px;
-    }
-
-    label {
-        display: block;
-        color: var(--text-sec);
-        margin-bottom: 5px;
-        font-size: 0.9rem;
-    }
-
-    .toggle-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 10px;
-        background: rgba(0, 0, 0, 0.2);
-        border-radius: 6px;
-        margin-bottom: 10px;
-    }
-</style>
 <script>
-    const EDIT_ALLOWED_COUNTRIES = "{{ link.allowed_countries or '' }}";
-    function openTab(name) {
-        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-        document.getElementById(name).classList.add('active');
-        document.getElementById('btn-' + name).classList.add('active');
-    }
+const EDIT_ALLOWED_COUNTRIES = "{{ link.allowed_countries or '' }}";
 </script>
 {% endblock %}
 
 {% block content %}
-<div class="card" style="max-width: 800px; margin: 0 auto;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-        <h2>Edit Link: <span class="text-accent">/{{ link.slug }}</span></h2>
-        <a href="/dashboard" class="btn-outline btn-sm">Cancel</a>
-    </div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Edit campaign</p>
+    <h1 class="mono">{{ link.slug }}</h1>
+    <p>Update routing, protection, schedule, and lifecycle limits.</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}">Stats</a>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_links.links') }}">Cancel</a>
+  </div>
+</header>
 
-    <form method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="tab-nav">
-            <button type="button" id="btn-general" class="tab-btn active" onclick="openTab('general')">General</button>
-            <button type="button" id="btn-targeting" class="tab-btn" onclick="openTab('targeting')">Targeting</button>
-            <button type="button" id="btn-protection" class="tab-btn"
-                onclick="openTab('protection')">Protection</button>
-            <button type="button" id="btn-scheduling" class="tab-btn"
-                onclick="openTab('scheduling')">Scheduling</button>
-            <button type="button" id="btn-limits" class="tab-btn" onclick="openTab('limits')">Limits</button>
-        </div>
-
-        <div id="general" class="tab-content active">
-            <div class="form-group">
-                <label>Destination URL *</label>
-                <input type="url" name="destination" value="{{ link.destination }}" required>
-            </div>
-
-            <div class="card" style="margin-top:20px; border:1px solid var(--border);">
-                <label>Current Masked Link:</label>
-                <div style="margin-bottom:10px; color:var(--accent);">
-                    {{ link.public_masked_url or "Not Masked" }}
-                </div>
-                {% if mask_with_isgd %}
-                <div class="toggle-row">
-                    <label>Masking</label>
-                    <span>Controlled by MASK_WITH_ISGD</span>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <div id="targeting" class="tab-content">
-            <div class="form-group">
-                <label><i class="fab fa-apple"></i> iOS Destination</label>
-                <input type="url" name="ios_url" value="{{ link.ios_url or '' }}">
-            </div>
-            <div class="form-group">
-                <label><i class="fab fa-android"></i> Android Destination</label>
-                <input type="url" name="android_url" value="{{ link.android_url or '' }}">
-            </div>
-        </div>
-
-        <div id="protection" class="tab-content">
-            <div class="toggle-row">
-                <label>Block Bots & Crawlers</label>
-                <input type="checkbox" name="block_bots" value="true" {% if link.block_bots %}checked{% endif %}
-                    style="width:auto;">
-            </div>
-            <div class="toggle-row">
-                <label>Block VPN / Proxies</label>
-                <input type="checkbox" name="block_vpn" value="true" {% if link.block_vpn %}checked{% endif %}
-                    style="width:auto;">
-            </div>
-            <div class="toggle-row">
-                <label>Block AdBlock Users</label>
-                <input type="checkbox" name="block_adblock" value="true" {% if link.block_adblock %}checked{% endif %}
-                    style="width:auto;">
-            </div>
-            <div class="toggle-row">
-                <label>Block No-JS</label>
-                <input type="checkbox" name="allow_no_js" value="true" {% if link.allow_no_js %}checked{% endif %}
-                    style="width:auto;">
-            </div>
-            <div class="form-group" style="margin-top:16px;">
-                <label>Allowed Countries <span style="color:var(--text-muted)">(empty = all)</span></label>
-                <select id="countriesSelect" multiple
-                    style="width:100%;height:160px;background:var(--bg-input);
-                           border:1px solid var(--border-subtle);color:var(--text-primary);
-                           border-radius:8px;padding:8px;appearance:none;">
-                    <option value="IT">🇮🇹 Italy</option>
-                    <option value="US">🇺🇸 United States</option>
-                    <option value="GB">🇬🇧 United Kingdom</option>
-                    <option value="DE">🇩🇪 Germany</option>
-                    <option value="FR">🇫🇷 France</option>
-                    <option value="ES">🇪🇸 Spain</option>
-                    <option value="CH">🇨🇭 Switzerland</option>
-                    <option value="AT">🇦🇹 Austria</option>
-                    <option value="NL">🇳🇱 Netherlands</option>
-                    <option value="BE">🇧🇪 Belgium</option>
-                    <option value="PT">🇵🇹 Portugal</option>
-                    <option value="SE">🇸🇪 Sweden</option>
-                    <option value="NO">🇳🇴 Norway</option>
-                    <option value="DK">🇩🇰 Denmark</option>
-                    <option value="FI">🇫🇮 Finland</option>
-                    <option value="PL">🇵🇱 Poland</option>
-                    <option value="CZ">🇨🇿 Czech Republic</option>
-                    <option value="RO">🇷🇴 Romania</option>
-                    <option value="HU">🇭🇺 Hungary</option>
-                    <option value="GR">🇬🇷 Greece</option>
-                    <option value="CA">🇨🇦 Canada</option>
-                    <option value="AU">🇦🇺 Australia</option>
-                    <option value="JP">🇯🇵 Japan</option>
-                    <option value="KR">🇰🇷 South Korea</option>
-                    <option value="CN">🇨🇳 China</option>
-                    <option value="IN">🇮🇳 India</option>
-                    <option value="BR">🇧🇷 Brazil</option>
-                    <option value="MX">🇲🇽 Mexico</option>
-                    <option value="AR">🇦🇷 Argentina</option>
-                    <option value="ZA">🇿🇦 South Africa</option>
-                    <option value="RU">🇷🇺 Russia</option>
-                    <option value="TR">🇹🇷 Turkey</option>
-                    <option value="SA">🇸🇦 Saudi Arabia</option>
-                    <option value="AE">🇦🇪 UAE</option>
-                    <option value="SG">🇸🇬 Singapore</option>
-                    <option value="UA">🇺🇦 Ukraine</option>
-                </select>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">
-                    Ctrl+click per più paesi. Nessuna selezione = tutti ammessi.
-                </p>
-                <input type="hidden" name="allowed_countries" id="allowedCountriesHidden">
-            </div>
-
-            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
-
-            <div class="toggle-row">
-                <label>Enable Captcha (Turnstile)</label>
-                <input type="checkbox" name="enable_captcha" value="true" {% if link.enable_captcha %}checked{% endif %}
-                    style="width:auto;">
-            </div>
-            <div class="toggle-row">
-                <label>Require Valid Email (Email Gate)</label>
-                <input type="checkbox" name="require_email" value="true" {% if link.require_email %}checked{% endif %}
-                    style="width:auto;">
-            </div>
-            <div class="form-group" style="margin-top: 10px;">
-                <label>Email Policy</label>
-                <select name="email_policy">
-                    <option value="all" {% if link.email_policy=='all' %}selected{% endif %}>Allow All Emails</option>
-                    <option value="certified" {% if link.email_policy=='certified' %}selected{% endif %}>Certified Only
-                        (Block Temp)</option>
-                    <option value="trackable" {% if link.email_policy=='trackable' %}selected{% endif %}>Trackable Only
-                        (Corp/ISP)</option>
-                </select>
-            </div>
-            <div class="form-group" style="margin-top: 20px;">
-                <label>Safe URL (Cloaking Destination)</label>
-                <input type="url" name="safe_url" value="{{ link.safe_url or 'https://www.google.com' }}"
-                    placeholder="https://www.google.com">
-            </div>
-            <label>Password (Leave empty to keep, *** to see it's set)</label>
-            <input type="text" name="password" placeholder="{{ '***' if link.password_hash else '' }}">
-        </div>
+<div class="mode-strip" data-tabs>
+  <button class="mode-chip active" data-tab-target="general"><strong>General</strong></button>
+  <button class="mode-chip" data-tab-target="targeting"><strong>Targeting</strong></button>
+  <button class="mode-chip" data-tab-target="protection"><strong>Protection</strong></button>
+  <button class="mode-chip" data-tab-target="scheduling"><strong>Scheduling</strong></button>
+  <button class="mode-chip" data-tab-target="limits"><strong>Limits</strong></button>
 </div>
 
-<div id="scheduling" class="tab-content">
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-        <div class="form-group">
-            <label>Start Active Hour</label>
-            <input type="number" name="schedule_start_hour" min="0" max="23"
-                value="{{ link.schedule_start_hour if link.schedule_start_hour is not none else '' }}">
-        </div>
-        <div class="form-group">
-            <label>End Active Hour</label>
-            <input type="number" name="schedule_end_hour" min="0" max="23"
-                value="{{ link.schedule_end_hour if link.schedule_end_hour is not none else '' }}">
-        </div>
-    </div>
-    <div class="form-group">
-        <label>Timezone</label>
-        <input type="text" name="schedule_timezone" value="{{ link.schedule_timezone or 'UTC' }}">
-    </div>
-</div>
+<form method="POST">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-<div id="limits" class="tab-content">
-    <div class="form-group">
-        <label>Max Clicks (0 = Unlimited)</label>
-        <input type="number" name="max_clicks" value="{{ link.max_clicks or 0 }}">
-    </div>
-    <div class="form-group">
-        <label>Expiration (Minutes)</label>
-        <input type="number" name="expiration_minutes" value="{{ link.expiration_minutes or 0 }}">
-    </div>
-</div>
+  <div id="general" class="tab-panel">
+    <section class="panel pad" style="margin-bottom:14px">
+      <div class="field">
+        <label>Destination URL *</label>
+        <input class="input" type="url" name="destination" value="{{ link.destination }}" required>
+        <div class="muted" style="font-size:12px;margin-top:4px">Visitors redirected here after tracking and protections.</div>
+      </div>
+      <div class="rule-row" style="margin-top:14px">
+        <div>
+          <div class="muted" style="font-size:12px">Current masked link</div>
+          <div class="mono" style="color:var(--info)">{{ link.public_masked_url or "Not masked" }}</div>
+        </div>
+        {% if mask_with_isgd %}<span class="badge info">MASK_WITH_ISGD</span>{% endif %}
+      </div>
+    </section>
+  </div>
 
-<div
-    style="margin-top: 30px; border-top: 1px solid var(--border-subtle); padding-top: 20px; text-align: right; display: flex; justify-content: flex-end; gap: 10px;">
-    <a href="/dashboard" class="btn-outline">Cancel</a>
-    <button type="submit" class="btn btn-primary">SAVE CHANGES</button>
-</div>
+  <div id="targeting" class="tab-panel" hidden>
+    <section class="panel pad" style="margin-bottom:14px">
+      <div class="form-grid">
+        <div class="field"><label>iOS destination</label><input class="input" type="url" name="ios_url" value="{{ link.ios_url or '' }}"></div>
+        <div class="field"><label>Android destination</label><input class="input" type="url" name="android_url" value="{{ link.android_url or '' }}"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="protection" class="tab-panel" hidden>
+    <section class="panel pad" style="margin-bottom:14px">
+      <div class="toggle-list">
+        <label class="toggle {% if link.block_bots %}enabled{% endif %}" data-cb="block_bots_cb">
+          <div><h3>Block bots</h3></div>
+          <input type="checkbox" id="block_bots_cb" name="block_bots" value="true" {% if link.block_bots %}checked{% endif %} style="display:none"><span class="switch"></span>
+        </label>
+        <label class="toggle {% if link.block_vpn %}enabled{% endif %}" data-cb="block_vpn_cb">
+          <div><h3>Block VPN / proxy</h3></div>
+          <input type="checkbox" id="block_vpn_cb" name="block_vpn" value="true" {% if link.block_vpn %}checked{% endif %} style="display:none"><span class="switch"></span>
+        </label>
+        <label class="toggle {% if link.block_adblock %}enabled{% endif %}" data-cb="block_adblock_cb">
+          <div><h3>Block adblock</h3></div>
+          <input type="checkbox" id="block_adblock_cb" name="block_adblock" value="true" {% if link.block_adblock %}checked{% endif %} style="display:none"><span class="switch"></span>
+        </label>
+        <label class="toggle {% if link.allow_no_js %}enabled{% endif %}" data-cb="allow_no_js_cb">
+          <div><h3>Allow no-JS</h3></div>
+          <input type="checkbox" id="allow_no_js_cb" name="allow_no_js" value="true" {% if link.allow_no_js %}checked{% endif %} style="display:none"><span class="switch"></span>
+        </label>
+        <label class="toggle {% if link.enable_captcha %}enabled{% endif %}" data-cb="enable_captcha_cb">
+          <div><h3>Captcha (Turnstile)</h3></div>
+          <input type="checkbox" id="enable_captcha_cb" name="enable_captcha" value="true" {% if link.enable_captcha %}checked{% endif %} style="display:none"><span class="switch"></span>
+        </label>
+        <label class="toggle {% if link.require_email %}enabled{% endif %}" data-cb="require_email_cb">
+          <div><h3>Email gate</h3></div>
+          <input type="checkbox" id="require_email_cb" name="require_email" value="true" {% if link.require_email %}checked{% endif %} style="display:none"><span class="switch"></span>
+        </label>
+      </div>
+      <div class="form-grid" style="margin-top:14px">
+        <div class="field">
+          <label>Email policy</label>
+          <select class="select" name="email_policy">
+            <option value="all" {% if link.email_policy=='all' %}selected{% endif %}>Allow all emails</option>
+            <option value="certified" {% if link.email_policy=='certified' %}selected{% endif %}>Certified only (block temp)</option>
+            <option value="trackable" {% if link.email_policy=='trackable' %}selected{% endif %}>Trackable only (corp/ISP)</option>
+          </select>
+        </div>
+        <div class="field"><label>Safe URL (cloaking)</label><input class="input" type="url" name="safe_url" value="{{ link.safe_url or 'https://www.google.com' }}"></div>
+        <div class="field"><label>Password <span class="muted">(empty = keep)</span></label><input class="input" type="text" name="password" placeholder="{{ '***' if link.password_hash else '' }}"></div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>Allowed countries <span class="muted">(none = all)</span></label>
+        <select class="select" id="countriesSelect" multiple style="height:160px">
+          {% for code, name in [
+            ('IT','Italy'),('US','United States'),('GB','United Kingdom'),('DE','Germany'),('FR','France'),
+            ('ES','Spain'),('CH','Switzerland'),('AT','Austria'),('NL','Netherlands'),('BE','Belgium'),
+            ('PT','Portugal'),('SE','Sweden'),('NO','Norway'),('DK','Denmark'),('FI','Finland'),
+            ('PL','Poland'),('CZ','Czech Republic'),('RO','Romania'),('HU','Hungary'),('GR','Greece'),
+            ('CA','Canada'),('AU','Australia'),('JP','Japan'),('KR','South Korea'),('CN','China'),
+            ('IN','India'),('BR','Brazil'),('MX','Mexico'),('AR','Argentina'),('ZA','South Africa'),
+            ('RU','Russia'),('TR','Turkey'),('SA','Saudi Arabia'),('AE','UAE'),('SG','Singapore'),('UA','Ukraine')
+          ] %}
+          <option value="{{ code }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+        <div class="muted" style="font-size:12px;margin-top:4px">Ctrl+click for multiple. None = all allowed.</div>
+        <input type="hidden" name="allowed_countries" id="allowedCountriesHidden">
+      </div>
+    </section>
+  </div>
+
+  <div id="scheduling" class="tab-panel" hidden>
+    <section class="panel pad" style="margin-bottom:14px">
+      <div class="form-grid">
+        <div class="field"><label>Start active hour (0–23)</label><input class="input" type="number" name="schedule_start_hour" min="0" max="23" value="{{ link.schedule_start_hour if link.schedule_start_hour is not none else '' }}"></div>
+        <div class="field"><label>End active hour (0–23)</label><input class="input" type="number" name="schedule_end_hour" min="0" max="23" value="{{ link.schedule_end_hour if link.schedule_end_hour is not none else '' }}"></div>
+        <div class="field"><label>Timezone</label><input class="input" name="schedule_timezone" value="{{ link.schedule_timezone or 'UTC' }}"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="limits" class="tab-panel" hidden>
+    <section class="panel pad" style="margin-bottom:14px">
+      <div class="form-grid">
+        <div class="field"><label>Max clicks (0 = unlimited)</label><input class="input" type="number" name="max_clicks" value="{{ link.max_clicks or 0 }}"></div>
+        <div class="field"><label>Expiration minutes (0 = never)</label><input class="input" type="number" name="expiration_minutes" value="{{ link.expiration_minutes or 0 }}"></div>
+      </div>
+    </section>
+  </div>
+
+  <div style="display:flex;gap:10px;margin-top:14px">
+    <button type="submit" class="btn primary">Save changes</button>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_links.links') }}">Cancel</a>
+  </div>
 </form>
-</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-(function(){
-  const sel=document.getElementById('countriesSelect');
-  const hid=document.getElementById('allowedCountriesHidden');
-  if(!sel||!hid)return;
-  const existing=typeof EDIT_ALLOWED_COUNTRIES!=='undefined'
-    ?EDIT_ALLOWED_COUNTRIES:'';
-  if(existing){
-    const codes=existing.split(',').map(s=>s.trim());
-    Array.from(sel.options).forEach(o=>{if(codes.includes(o.value))o.selected=true;});
-  }
-  sel.closest('form').addEventListener('submit',function(){
-    hid.value=Array.from(sel.selectedOptions).map(o=>o.value).join(',');
+(function () {
+  document.querySelectorAll('.toggle[data-cb]').forEach(function (toggle) {
+    var cb = document.getElementById(toggle.getAttribute('data-cb'));
+    toggle.addEventListener('click', function (e) {
+      if (e.target.tagName === 'INPUT') return;
+      toggle.classList.toggle('enabled');
+      cb.checked = toggle.classList.contains('enabled');
+    });
   });
-})();
+  var sel = document.getElementById('countriesSelect');
+  var hid = document.getElementById('allowedCountriesHidden');
+  if (sel && hid) {
+    var existing = (typeof EDIT_ALLOWED_COUNTRIES !== 'undefined') ? EDIT_ALLOWED_COUNTRIES : '';
+    if (existing) {
+      var codes = existing.split(',').map(function (s) { return s.trim(); });
+      Array.prototype.forEach.call(sel.options, function (o) { if (codes.indexOf(o.value) !== -1) o.selected = true; });
+    }
+    sel.closest('form').addEventListener('submit', function () {
+      hid.value = Array.prototype.map.call(sel.selectedOptions, function (o) { return o.value; }).join(',');
+    });
+  }
+}());
 </script>
 {% endblock %}

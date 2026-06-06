@@ -1,32 +1,27 @@
 {% extends "base.html" %}
-
-{% block breadcrumb %}Security / 2FA Setup{% endblock %}
+{% block title %} — 2FA Setup{% endblock %}
 
 {% block content %}
-<div style="max-width:520px;margin:2rem auto;">
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-qrcode"></i> Configure authenticator app</span>
-        </div>
-        <p style="color:var(--text-secondary);margin-bottom:1rem;">
-            Scan the QR code below with your authenticator app, then enter the 6-digit code to confirm setup for <strong>{{ email }}</strong>.
-        </p>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Security / 2FA</p>
+    <h1>Configure authenticator</h1>
+  </div>
+</header>
 
-        <div style="display:flex;justify-content:center;margin:1.5rem 0;">
-            <img src="data:image/png;base64,{{ qr_code }}" alt="TOTP QR code" style="max-width:220px;border-radius:12px;background:#fff;padding:1rem;">
-        </div>
-
-        <div class="toggle-row" style="margin-bottom:1rem;">
-            <label>Manual secret</label>
-            <span class="text-mono">{{ secret }}</span>
-        </div>
-
-        <form action="{{ url_for('dashboard.dashboard_security.verify_2fa_setup') }}" method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="totp_code">Verification code</label>
-            <input id="totp_code" name="totp_code" type="text" maxlength="6" pattern="[0-9]{6}" required autofocus>
-            <button class="btn btn-primary w-full">Enable 2FA</button>
-        </form>
+<div style="max-width:520px;margin:0 auto;width:100%">
+  <div class="panel pad">
+    <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Scan QR code</h2><span class="badge info">{{ email }}</span></div>
+    <p class="muted">Scan with your authenticator app, then enter the 6-digit code to confirm.</p>
+    <div style="display:flex;justify-content:center;margin:18px 0">
+      <img src="data:image/png;base64,{{ qr_code }}" alt="TOTP QR code" style="max-width:220px;border-radius:12px;background:#fff;padding:16px">
     </div>
+    <div class="rule-row" style="margin-bottom:14px"><span>Manual secret</span><span class="mono">{{ secret }}</span></div>
+    <form action="{{ url_for('dashboard.dashboard_security.verify_2fa_setup') }}" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field"><label>Verification code</label><input class="input mono" name="totp_code" type="text" maxlength="6" pattern="[0-9]{6}" required autofocus></div>
+      <button class="btn primary" style="width:100%;margin-top:12px">Enable 2FA</button>
+    </form>
+  </div>
 </div>
 {% endblock %}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UrlTrack — Create workspace</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/urltrack.css') }}">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+</head>
+<body>
+  <main class="launcher">
+    <div style="max-width:460px;margin:0 auto;width:100%">
+      <div class="brand" style="padding-left:0;margin-bottom:18px"><span class="brand-mark">U</span> UrlTrack</div>
+      <p class="eyebrow">Welcome</p>
+      <h1>Create your workspace.</h1>
+      <p>Every link, visit, and lead is organized inside your workspace.</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+      <div class="panel pad" style="margin:14px 0;border-color:{% if category=='error' %}var(--danger){% elif category=='success' %}var(--success){% else %}var(--warn){% endif %}">{{ message }}</div>
+      {% endfor %}
+      {% endwith %}
+
+      <div class="panel pad" style="margin-top:18px">
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field">
+            <label>Workspace name</label>
+            <input class="input" name="workspace_name" placeholder="e.g. Acme Corp" required minlength="2" maxlength="128" autofocus>
+          </div>
+          <button type="submit" class="btn primary" style="width:100%;margin-top:14px">Create workspace</button>
+        </form>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

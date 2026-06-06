@@ -1,276 +1,183 @@
-import base64
-import json
+import secrets
+from datetime import datetime
 
-import bcrypt
-import pyotp
-from flask import (
-    Blueprint,
-    flash,
-    jsonify,
-    redirect,
-    render_template,
-    request,
-    session,
-    url_for,
-)
-from flask_login import current_user, login_required, login_user, logout_user
-from webauthn import (
-    generate_authentication_options,
-    options_to_json,
-    verify_authentication_response,
-)
-from webauthn.helpers.structs import PublicKeyCredentialDescriptor, UserVerificationRequirement
-from werkzeug.security import check_password_hash, generate_password_hash
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
 
-from ..config import Config
-from ..extensions import db, limiter
-from ..models import SetupState, User
-from ..utils import generate_secret_code, sanitize, safe_json
-
+from ..auth_middleware import get_current_user, workspace_required
+from ..extensions import db
+from ..models import Workspace, WorkspaceMember
+from ..supabase_client import get_supabase
 
 bp = Blueprint("auth", __name__)
 
 
-def _setup_state() -> SetupState:
-    state = db.session.get(SetupState, 1)
-    if state is None:
-        state = SetupState(id=1, setup_completed=False)
-        db.session.add(state)
-        db.session.commit()
-    return state
+@bp.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        try:
+            sb = get_supabase()
+            result = sb.auth.sign_in_with_password({"email": email, "password": password})
+            session["supabase_access_token"] = result.session.access_token
+            session["supabase_refresh_token"] = result.session.refresh_token
+            session.permanent = True
+
+            member = WorkspaceMember.query.filter_by(
+                user_id=result.user.id,
+                status="active",
+            ).first()
+            if not member:
+                return redirect(url_for("auth.onboarding"))
+            session["current_workspace_id"] = member.workspace_id
+            return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+        except Exception:
+            flash("Email o password errati.", "error")
+    return render_template("login.html")
 
 
-def _passkey_rp_id() -> str:
-    return Config.SERVER_URL.replace("https://", "").replace("http://", "").split(":")[0].split("/")[0]
-
-
-def _session_user(value):
-    try:
-        return db.session.get(User, int(value))
-    except (TypeError, ValueError):
-        return None
-
-
-@bp.route("/setup", methods=["GET", "POST"])
-@limiter.limit(Config.RATE_LIMIT_AUTH)
-def setup():
-    if not Config.ADMIN_BOOTSTRAP_ENABLED:
-        return redirect(url_for("auth.login"))
-    if User.query.count() > 0:
+@bp.route("/register", methods=["GET", "POST"])
+def register():
+    existing = Workspace.query.first()
+    if existing:
+        flash("La registrazione è disponibile solo tramite invito.", "error")
         return redirect(url_for("auth.login"))
 
     if request.method == "POST":
-        email = sanitize(request.form.get("email"), 255).lower()
-        username = sanitize(request.form.get("username"), 80)
+        email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        confirm_password = request.form.get("confirm_password", "")
-
-        if not email or "@" not in email:
-            flash("A valid admin email is required.", "error")
-            return render_template("setup.html", hide_nav=True)
-        if len(password) < 12:
-            flash("Password must be at least 12 characters long.", "error")
-            return render_template("setup.html", hide_nav=True)
-        if password != confirm_password:
-            flash("Passwords do not match.", "error")
-            return render_template("setup.html", hide_nav=True)
-
-        generated_secret = generate_secret_code(Config.SETUP_SECRET_LENGTH)
-        state = _setup_state()
-        state.setup_completed = True
-        state.admin_secret_hash = generate_password_hash(generated_secret)
-
-        admin = User(
-            email=email,
-            username=username or email.split("@", 1)[0],
-            password_hash=generate_password_hash(password),
-        )
-        db.session.add(admin)
-        db.session.commit()
-
-        session["setup_secret_code"] = generated_secret
-        login_user(admin, remember=True)
-        return redirect(url_for("auth.show_setup_secret"))
-
-    return render_template("setup.html", hide_nav=True)
+        if len(password) < 8:
+            flash("La password deve essere di almeno 8 caratteri.", "error")
+            return render_template("login.html", mode="register")
+        try:
+            sb = get_supabase()
+            result = sb.auth.sign_up({"email": email, "password": password})
+            if result.user:
+                if result.session:
+                    session["supabase_access_token"] = result.session.access_token
+                flash("Account creato. Controlla la tua email per confermare.", "success")
+                return redirect(url_for("auth.onboarding"))
+        except Exception as e:
+            flash(str(e), "error")
+    return render_template("login.html", mode="register")
 
 
-@bp.route("/setup/secret")
-@login_required
-def show_setup_secret():
-    secret_code = session.pop("setup_secret_code", None)
-    if not secret_code:
-        flash("The setup secret is no longer available.", "warning")
-        return redirect(url_for("dashboard.dashboard_security.security_settings"))
-    return render_template("setup_secret.html", hide_nav=True, secret_code=secret_code)
+@bp.route("/onboarding", methods=["GET", "POST"])
+def onboarding():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("auth.login"))
 
-
-@bp.route("/login", methods=["GET", "POST"])
-@limiter.limit(Config.RATE_LIMIT_AUTH)
-def login():
-    if User.query.count() == 0 and Config.ADMIN_BOOTSTRAP_ENABLED:
-        return redirect(url_for("auth.setup"))
-    if current_user.is_authenticated:
+    member = WorkspaceMember.query.filter_by(user_id=user.id, status="active").first()
+    if member:
         return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
 
     if request.method == "POST":
-        if "email" in request.form and "password" in request.form:
-            email = sanitize(request.form.get("email"), 255).lower()
-            password = request.form.get("password", "")
-            user = User.query.filter_by(email=email).first()
+        name = request.form.get("workspace_name", "").strip()
+        if not name or len(name) < 2:
+            flash("Il nome del workspace deve essere di almeno 2 caratteri.", "error")
+            return render_template("onboarding.html")
 
-            if user and check_password_hash(user.password_hash, password):
-                if user.totp_enabled or bool(user.passkeys):
-                    session["pending_2fa_user_id"] = user.id
-                    return render_template(
-                        "2fa_verify.html",
-                        email=user.email,
-                        has_passkey=bool(user.passkeys),
-                        hide_nav=True,
-                    )
-                login_user(user, remember=True)
-                flash("Login successful.", "success")
-                return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+        slug = "".join(c for c in name.lower().replace(" ", "-")[:32] if c.isalnum() or c == "-")
+        base_slug = slug
+        counter = 1
+        while Workspace.query.filter_by(slug=slug).first():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
 
-            flash("Invalid email or password.", "error")
+        workspace = Workspace(name=name, slug=slug, owner_user_id=user.id)
+        db.session.add(workspace)
+        db.session.flush()
 
-        elif "totp_code" in request.form or "backup_code" in request.form:
-            user_id = session.get("pending_2fa_user_id")
-            if not user_id:
-                flash("Session expired. Please login again.", "error")
-                return redirect(url_for("auth.login"))
-
-            user = _session_user(user_id)
-            if user is None:
-                flash("User not found.", "error")
-                return redirect(url_for("auth.login"))
-
-            if "totp_code" in request.form:
-                code = sanitize(request.form.get("totp_code"), 6)
-                totp = pyotp.TOTP(user.totp_secret or "")
-                if user.totp_enabled and totp.verify(code, valid_window=1):
-                    session.pop("pending_2fa_user_id", None)
-                    login_user(user, remember=True)
-                    flash("Login successful.", "success")
-                    return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
-                flash("Invalid verification code.", "error")
-                return render_template(
-                    "2fa_verify.html",
-                    email=user.email,
-                    has_passkey=bool(user.passkeys),
-                    hide_nav=True,
-                )
-
-            backup_code = sanitize(request.form.get("backup_code"), 64).replace("-", "")
-            remaining_codes = []
-            matched = False
-            for stored_code in user.backup_code_hashes:
-                if not matched and bcrypt.checkpw(backup_code.encode(), stored_code.encode()):
-                    matched = True
-                    continue
-                remaining_codes.append(stored_code)
-
-            if matched:
-                user.backup_codes = json.dumps(remaining_codes)
-                db.session.commit()
-                session.pop("pending_2fa_user_id", None)
-                login_user(user, remember=True)
-                flash("Login successful with backup code.", "success")
-                return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
-
-            flash("Invalid backup code.", "error")
-            return render_template(
-                "2fa_verify.html",
-                email=user.email,
-                has_passkey=bool(user.passkeys),
-                hide_nav=True,
-            )
-
-    return render_template("login.html", hide_nav=True)
-
-
-@bp.route("/auth/passkey/options", methods=["POST"])
-@limiter.limit(Config.RATE_LIMIT_AUTH)
-def passkey_auth_options():
-    payload = request.get_json(silent=True) or {}
-    email = sanitize(payload.get("email"), 255).lower()
-    if not email:
-        return jsonify({"error": "Email required"}), 400
-
-    user = User.query.filter_by(email=email).first()
-    if not user or not user.passkeys:
-        return jsonify({"error": "No passkeys registered"}), 404
-
-    allow_credentials = []
-    for credential in user.passkeys:
-        try:
-            allow_credentials.append(
-                PublicKeyCredentialDescriptor(id=base64.urlsafe_b64decode(credential["id"] + "=="))
-            )
-        except (KeyError, ValueError):
-            continue
-
-    if not allow_credentials:
-        return jsonify({"error": "No valid passkeys registered"}), 404
-
-    options = generate_authentication_options(
-        rp_id=_passkey_rp_id(),
-        allow_credentials=allow_credentials,
-        user_verification=UserVerificationRequirement.PREFERRED,
-    )
-    session["webauthn_challenge"] = base64.b64encode(options.challenge).decode()
-    session["webauthn_user_id"] = user.id
-    return jsonify(json.loads(options_to_json(options)))
-
-
-@bp.route("/auth/passkey/verify", methods=["POST"])
-@limiter.limit(Config.RATE_LIMIT_AUTH)
-def passkey_auth_verify():
-    payload = request.get_json(silent=True) or {}
-    challenge = session.get("webauthn_challenge")
-    user_id = session.get("webauthn_user_id")
-    if not challenge or not user_id:
-        return jsonify({"verified": False, "error": "Session expired"}), 400
-
-    user = _session_user(user_id)
-    if user is None:
-        return jsonify({"verified": False, "error": "User not found"}), 404
-
-    credentials = safe_json(user.passkey_credentials, []) or []
-    credential_id = payload.get("id") or payload.get("rawId")
-    matching = next((item for item in credentials if item["id"] == credential_id), None)
-    if matching is None:
-        return jsonify({"verified": False, "error": "Credential not found"}), 404
-
-    try:
-        verification = verify_authentication_response(
-            credential=payload,
-            expected_challenge=base64.b64decode(challenge),
-            expected_rp_id=_passkey_rp_id(),
-            expected_origin=Config.SERVER_URL,
-            credential_public_key=base64.urlsafe_b64decode(matching["public_key"] + "=="),
-            credential_current_sign_count=matching.get("sign_count", 0),
+        new_member = WorkspaceMember(
+            workspace_id=workspace.id,
+            user_email=user.email,
+            user_id=user.id,
+            role="owner",
+            status="active",
+            joined_at=datetime.utcnow(),
         )
-    except Exception as exc:
-        return jsonify({"verified": False, "error": str(exc)}), 400
+        db.session.add(new_member)
+        db.session.commit()
 
-    matching["sign_count"] = verification.new_sign_count
-    user.passkey_credentials = json.dumps(credentials)
-    db.session.commit()
-    session.pop("webauthn_challenge", None)
-    session.pop("webauthn_user_id", None)
-    session.pop("pending_2fa_user_id", None)
-    login_user(user, remember=True)
-    return jsonify({"verified": True, "redirect": url_for("dashboard.dashboard_links.dashboard_home")})
+        session["current_workspace_id"] = workspace.id
+        flash(f"Workspace '{name}' creato con successo.", "success")
+        return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+
+    return render_template("onboarding.html")
 
 
 @bp.route("/logout")
-@login_required
 def logout():
-    session.pop("setup_secret_code", None)
-    session.pop("pending_2fa_user_id", None)
-    session.pop("webauthn_challenge", None)
-    session.pop("webauthn_user_id", None)
-    logout_user()
-    flash("Logged out.", "success")
+    try:
+        token = session.get("supabase_access_token")
+        if token:
+            get_supabase().auth.sign_out()
+    except Exception:
+        pass
+    session.clear()
     return redirect(url_for("auth.login"))
+
+
+@bp.route("/accept-invite", methods=["GET", "POST"])
+def accept_invite():
+    token = request.args.get("token") or request.form.get("token")
+    if not token:
+        flash("Link di invito non valido.", "error")
+        return redirect(url_for("auth.login"))
+
+    member = WorkspaceMember.query.filter_by(invite_token=token, status="pending").first()
+    if not member:
+        flash("Link di invito scaduto o già utilizzato.", "error")
+        return redirect(url_for("auth.login"))
+
+    workspace = db.session.get(Workspace, member.workspace_id)
+
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if len(password) < 8:
+            flash("La password deve essere di almeno 8 caratteri.", "error")
+            return render_template("accept_invite.html", member=member, workspace=workspace, token=token)
+
+        try:
+            sb = get_supabase()
+            try:
+                result = sb.auth.sign_in_with_password(
+                    {"email": member.user_email, "password": password}
+                )
+            except Exception:
+                result = sb.auth.sign_up(
+                    {"email": member.user_email, "password": password}
+                )
+
+            if result.user:
+                member.user_id = result.user.id
+                member.status = "active"
+                member.joined_at = datetime.utcnow()
+                member.invite_token = None
+                db.session.commit()
+
+                if result.session:
+                    session["supabase_access_token"] = result.session.access_token
+                    session["current_workspace_id"] = member.workspace_id
+
+                flash("Benvenuto nel workspace!", "success")
+                return redirect(url_for("dashboard.dashboard_links.dashboard_home"))
+        except Exception as e:
+            flash(str(e), "error")
+
+    return render_template("accept_invite.html", member=member, workspace=workspace, token=token)
+
+
+@bp.route("/switch-workspace/<workspace_id>")
+def switch_workspace(workspace_id: str):
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("auth.login"))
+    member = WorkspaceMember.query.filter_by(
+        workspace_id=workspace_id, user_id=user.id, status="active"
+    ).first()
+    if not member:
+        abort(403)
+    session["current_workspace_id"] = workspace_id
+    return redirect(url_for("dashboard.dashboard_links.dashboard_home"))

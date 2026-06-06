@@ -1,169 +1,159 @@
 {% extends "base.html" %}
-
-{% block breadcrumb %}Global Intel / Timeline{% endblock %}
+{% block title %} — Timeline{% endblock %}
 
 {% block content %}
-<div class="card" style="margin-bottom:1.25rem;">
-    <form method="GET" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;align-items:end;">
-        <div>
-            <label>Search</label>
-            <input type="text" name="q" value="{{ q }}" placeholder="IP, email, hostname, org, fingerprint">
-        </div>
-        <div>
-            <label>Link</label>
-            <select name="slug">
-                <option value="">All</option>
-                {% for item in slugs %}
-                <option value="{{ item }}" {% if item == filters.slug %}selected{% endif %}>/{{ item }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label>Country</label>
-            <select name="country">
-                <option value="">All</option>
-                {% for item in countries %}
-                <option value="{{ item }}" {% if item == country %}selected{% endif %}>{{ item }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label>Device</label>
-            <select name="device">
-                <option value="">All</option>
-                {% for item in devices %}
-                <option value="{{ item }}" {% if item == device %}selected{% endif %}>{{ item }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label>Signal</label>
-            <select name="signal">
-                <option value="all" {% if filters.signal == 'all' %}selected{% endif %}>All signals</option>
-                <option value="fingerprint" {% if filters.signal == 'fingerprint' %}selected{% endif %}>Has fingerprint</option>
-                <option value="email" {% if filters.signal == 'email' %}selected{% endif %}>Has email</option>
-                <option value="vpn" {% if filters.signal == 'vpn' %}selected{% endif %}>VPN / proxy / hosting</option>
-                <option value="bot" {% if filters.signal == 'bot' %}selected{% endif %}>Browser automation</option>
-                <option value="adblock" {% if filters.signal == 'adblock' %}selected{% endif %}>Adblock / privacy</option>
-                <option value="conflict" {% if filters.signal == 'conflict' %}selected{% endif %}>Cluster conflict</option>
-                <option value="missing_beacon" {% if filters.signal == 'missing_beacon' %}selected{% endif %}>Missing beacon</option>
-            </select>
-        </div>
-        <div>
-            <label>Beacon</label>
-            <select name="beacon">
-                <option value="all" {% if filters.beacon == 'all' %}selected{% endif %}>All</option>
-                <option value="received" {% if filters.beacon == 'received' %}selected{% endif %}>Received</option>
-                <option value="missing" {% if filters.beacon == 'missing' %}selected{% endif %}>Missing</option>
-            </select>
-        </div>
-        <div>
-            <label>Review</label>
-            <select name="review_label">
-                <option value="">All</option>
-                <option value="__none" {% if filters.review_label == '__none' %}selected{% endif %}>Unreviewed</option>
-                {% for item in review_labels %}
-                <option value="{{ item }}" {% if item == filters.review_label %}selected{% endif %}>{{ item }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label>Min Risk</label>
-            <input type="number" min="0" max="100" name="risk_min" value="{{ filters.risk_min }}">
-        </div>
-        <div>
-            <label>Min ID</label>
-            <input type="number" min="0" max="100" name="identity_min" value="{{ filters.identity_min }}">
-        </div>
-        <div>
-            <label>Days</label>
-            <select name="days">
-                <option value="1" {% if days == 1 %}selected{% endif %}>1</option>
-                <option value="7" {% if days == 7 %}selected{% endif %}>7</option>
-                <option value="30" {% if days == 30 %}selected{% endif %}>30</option>
-                <option value="0" {% if days == 0 %}selected{% endif %}>All</option>
-            </select>
-        </div>
-        <div>
-            <label>Sort</label>
-            <select name="sort">
-                <option value="newest" {% if filters.sort == 'newest' %}selected{% endif %}>Newest</option>
-                <option value="risk" {% if filters.sort == 'risk' %}selected{% endif %}>Highest risk</option>
-                <option value="identity" {% if filters.sort == 'identity' %}selected{% endif %}>Highest identity</option>
-            </select>
-        </div>
-        <button class="btn btn-primary">Filter</button>
-    </form>
-</div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Global intel / Timeline</p>
+    <h1>Visit timeline</h1>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}">Journey Graph</a>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.graph') }}">Graph view</a>
+  </div>
+</header>
 
-<div class="card">
-    <div class="card-header">
-        <div>
-            <span class="card-title">Visits</span>
-            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">
-                Investigative filters for tracking quality, risk, review status, and cross-signal traces.
-            </div>
-        </div>
-        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
-            <a href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}" class="btn btn-ghost">Cross Tracking</a>
-            <div class="badge badge-blue">{{ visits|length }}</div>
-        </div>
+<section class="panel pad" style="margin-bottom:14px">
+  <form method="GET" class="form-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+    <div class="field">
+      <label>Search</label>
+      <input class="input" type="text" name="q" value="{{ q }}" placeholder="IP, email, org, fingerprint">
     </div>
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Time</th>
-                <th>Link</th>
-                <th>Visitor</th>
-                <th>Device</th>
-                <th>Trust</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for visit in visits %}
-            <tr>
-                <td class="text-mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                <td><a href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) }}">/{{ visit.link.slug }}</a></td>
-                <td>
-                    <div>{{ visit.email or visit.ip_address }}</div>
-                    <div style="font-size:0.8rem;color:var(--text-secondary);">{{ visit.city or 'Unknown' }}{% if visit.country %}, {{ visit.country }}{% endif %}</div>
-                </td>
-                <td>
-                    <div>{{ visit.os_family or 'Unknown' }} / {{ visit.device_type or 'Unknown' }}</div>
-                    {% if visit.browser_bot %}
-                    <span class="badge badge-warning">Browser automation</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
-                        <span class="badge badge-blue">ID {{ visit.identity_confidence if visit.identity_confidence is not none else 0 }}</span>
-                        {% if visit.risk_score and visit.risk_score >= 50 %}
-                        <span class="badge badge-danger">Risk {{ visit.risk_score }}</span>
-                        {% elif visit.risk_score and visit.risk_score > 0 %}
-                        <span class="badge badge-warning">Risk {{ visit.risk_score }}</span>
-                        {% else %}
-                        <span class="badge badge-success">Risk 0</span>
-                        {% endif %}
-                        {% if visit.review_label %}
-                        <span class="badge badge-purple">{{ visit.review_label }}</span>
-                        {% endif %}
-                    </div>
-                </td>
-                <td>
-                    {% if visit.canvas_hash %}
-                    <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.canvas_hash) }}" class="btn btn-ghost">Fingerprint</a>
-                    {% elif visit.etag %}
-                    <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.etag) }}" class="btn btn-ghost">ETag</a>
-                    {% else %}
-                    <span class="text-muted">None</span>
-                    {% endif %}
-                </td>
-            </tr>
+    <div class="field">
+      <label>Link</label>
+      <select class="select" name="slug">
+        <option value="">All</option>
+        {% for item in slugs %}
+        <option value="{{ item }}" {% if item == filters.slug %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Country</label>
+      <select class="select" name="country">
+        <option value="">All</option>
+        {% for item in countries %}
+        <option value="{{ item }}" {% if item == country %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Device</label>
+      <select class="select" name="device">
+        <option value="">All</option>
+        {% for item in devices %}
+        <option value="{{ item }}" {% if item == device %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Signal</label>
+      <select class="select" name="signal">
+        <option value="all" {% if filters.signal == 'all' %}selected{% endif %}>All signals</option>
+        <option value="fingerprint" {% if filters.signal == 'fingerprint' %}selected{% endif %}>Has fingerprint</option>
+        <option value="email" {% if filters.signal == 'email' %}selected{% endif %}>Has email</option>
+        <option value="vpn" {% if filters.signal == 'vpn' %}selected{% endif %}>VPN / proxy / hosting</option>
+        <option value="bot" {% if filters.signal == 'bot' %}selected{% endif %}>Browser automation</option>
+        <option value="adblock" {% if filters.signal == 'adblock' %}selected{% endif %}>Adblock / privacy</option>
+        <option value="conflict" {% if filters.signal == 'conflict' %}selected{% endif %}>Cluster conflict</option>
+        <option value="missing_beacon" {% if filters.signal == 'missing_beacon' %}selected{% endif %}>Missing beacon</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Beacon</label>
+      <select class="select" name="beacon">
+        <option value="all" {% if filters.beacon == 'all' %}selected{% endif %}>All</option>
+        <option value="received" {% if filters.beacon == 'received' %}selected{% endif %}>Received</option>
+        <option value="missing" {% if filters.beacon == 'missing' %}selected{% endif %}>Missing</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Review</label>
+      <select class="select" name="review_label">
+        <option value="">All</option>
+        <option value="__none" {% if filters.review_label == '__none' %}selected{% endif %}>Unreviewed</option>
+        {% for item in review_labels %}
+        <option value="{{ item }}" {% if item == filters.review_label %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Min risk</label>
+      <input class="input" type="number" min="0" max="100" name="risk_min" value="{{ filters.risk_min }}">
+    </div>
+    <div class="field">
+      <label>Min identity</label>
+      <input class="input" type="number" min="0" max="100" name="identity_min" value="{{ filters.identity_min }}">
+    </div>
+    <div class="field">
+      <label>Days</label>
+      <select class="select" name="days">
+        <option value="1" {% if days == 1 %}selected{% endif %}>1</option>
+        <option value="7" {% if days == 7 %}selected{% endif %}>7</option>
+        <option value="30" {% if days == 30 %}selected{% endif %}>30</option>
+        <option value="0" {% if days == 0 %}selected{% endif %}>All</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Sort</label>
+      <select class="select" name="sort">
+        <option value="newest" {% if filters.sort == 'newest' %}selected{% endif %}>Newest</option>
+        <option value="risk" {% if filters.sort == 'risk' %}selected{% endif %}>Highest risk</option>
+        <option value="identity" {% if filters.sort == 'identity' %}selected{% endif %}>Highest identity</option>
+      </select>
+    </div>
+    <div class="field" style="align-self:end">
+      <button class="btn primary" type="submit">Filter</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>Visits</h2><span class="badge info">{{ visits|length }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Link</th><th>Visitor</th><th>Device</th><th>Trust</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for visit in visits %}
+        <tr>
+          <td class="mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') if visit.timestamp else '—' }}</td>
+          <td class="mono"><a href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) }}" style="color:var(--fg)">{{ visit.link.slug if visit.link else '—' }}</a></td>
+          <td>
+            <div>{{ visit.email or visit.ip_address or '—' }}</div>
+            <div class="muted">{{ visit.city or 'Unknown' }}{% if visit.country %}, {{ visit.country }}{% endif %}</div>
+          </td>
+          <td>
+            {{ visit.os_family or 'Unknown' }} / {{ visit.device_type or 'Unknown' }}
+            {% if visit.browser_bot %}<span class="badge warn">Bot</span>{% endif %}
+          </td>
+          <td>
+            <span class="badge info">ID {{ visit.identity_confidence if visit.identity_confidence is not none else 0 }}</span>
+            {% if visit.risk_score and visit.risk_score >= 50 %}
+            <span class="badge danger">Risk {{ visit.risk_score }}</span>
+            {% elif visit.risk_score and visit.risk_score > 0 %}
+            <span class="badge warn">Risk {{ visit.risk_score }}</span>
             {% else %}
-            <tr><td colspan="6">No visits found for the selected filters.</td></tr>
-            {% endfor %}
-        </tbody>
+            <span class="badge success">Risk 0</span>
+            {% endif %}
+            {% if visit.review_label %}<span class="badge">{{ visit.review_label }}</span>{% endif %}
+          </td>
+          <td>
+            {% if visit.canvas_hash %}
+            <a class="badge info" href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.canvas_hash) }}">Fingerprint</a>
+            {% elif visit.etag %}
+            <a class="badge info" href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.etag) }}">ETag</a>
+            {% else %}
+            <span class="muted">None</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted" style="text-align:center;padding:32px">No visits found for these filters.</td></tr>
+        {% endfor %}
+      </tbody>
     </table>
-</div>
+  </div>
+</section>
 {% endblock %}

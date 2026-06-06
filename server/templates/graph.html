@@ -1,32 +1,36 @@
 {% extends "base.html" %}
-
-{% block breadcrumb %}Global Intel / Graph{% endblock %}
+{% block title %} — Graph{% endblock %}
 
 {% block head %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" nonce="{{ csp_nonce|default('') }}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 {% endblock %}
 
 {% block content %}
-<div class="card glass">
-    <div class="card-header">
-        <div>
-            <span class="card-title"><i class="fa-solid fa-diagram-project"></i> Visitor Connection Graph</span>
-            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">
-                Cross-signal links between visitors, Thumbmark IDs, emails, browser fingerprints, devices, and visits.
-            </div>
-        </div>
-        <a href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}" class="btn btn-ghost">Cross Tracking</a>
-    </div>
-    <div id="graph-root" style="width:100%;height:72vh;min-height:560px;border-radius:20px;overflow:hidden;background:rgba(15,23,42,0.5);"></div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Global intel / Identity graph</p>
+    <h1>Visitor connection graph</h1>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}">Journey Graph</a>
+  </div>
+</header>
+
+<div class="panel pad">
+  <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px">
+    <h2>Cross-signal links</h2>
+    <span class="badge info">Visitors · IDs · fingerprints</span>
+  </div>
+  <div id="graph-root" style="width:100%;height:72vh;min-height:560px;border-radius:14px;overflow:hidden;background:oklch(16% 0.018 250)"></div>
 </div>
 
-<script nonce="{{ csp_nonce|default('') }}">
+<script>
 const GRAPH_DATA = {{ graph_data|safe }};
 </script>
 {% endblock %}
 
 {% block scripts %}
-<script nonce="{{ csp_nonce|default('') }}">
+<script>
 (function () {
     const root = document.getElementById("graph-root");
     const width = root.clientWidth || 1200;

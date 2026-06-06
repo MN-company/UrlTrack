@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %} — Team{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <div>
+    <p class="eyebrow">{{ workspace.name }} / Team</p>
+    <h1>Members and roles</h1>
+  </div>
+</header>
+
+<section class="panel">
+  <div class="panel-head"><h2>Members</h2><span class="badge info">{{ members|length }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Email</th><th>Role</th><th>Status</th><th>Joined / Invited</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td class="mono">{{ m.user_email }}</td>
+          <td>
+            {% if m.role == 'owner' %}<span class="badge success">owner</span>
+            {% elif m.role == 'admin' %}<span class="badge warn">admin</span>
+            {% elif m.role == 'editor' %}<span class="badge info">editor</span>
+            {% elif m.role == 'analyst' %}<span class="badge" style="color:var(--primary)">analyst</span>
+            {% else %}<span class="badge">viewer</span>{% endif %}
+          </td>
+          <td>
+            {% if m.status == 'active' %}<span class="badge success">active</span>
+            {% else %}<span class="badge warn">pending</span>{% endif %}
+          </td>
+          <td class="muted">
+            {% if m.joined_at %}{{ m.joined_at.strftime('%b %d, %Y') }}
+            {% elif m.invited_at %}inv. {{ m.invited_at.strftime('%b %d, %Y') }}{% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              {% if m.role != 'owner' %}
+              <form method="POST" action="{{ url_for('dashboard.team.change_role', member_id=m.id) }}" style="display:flex;gap:4px">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select class="select" name="role" style="width:auto;padding:5px 8px">
+                  {% for r in ['admin','editor','analyst','viewer'] %}
+                  <option value="{{ r }}" {% if m.role == r %}selected{% endif %}>{{ r }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="badge info" style="border:none;cursor:pointer">Save</button>
+              </form>
+              <form method="POST" action="{{ url_for('dashboard.team.remove_member', member_id=m.id) }}" onsubmit="return confirm('Remove {{ m.user_email }}?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="badge danger" style="border:none;cursor:pointer;background:transparent">Remove</button>
+              </form>
+              {% endif %}
+              {% if m.status == 'pending' %}
+              <form method="POST" action="{{ url_for('dashboard.team.resend_invite', member_id=m.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="badge" style="border:none;cursor:pointer;background:transparent">Resend</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel pad" style="margin-top:14px">
+  <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Invite collaborator</h2><span class="badge success">New member</span></div>
+  <form method="POST" action="{{ url_for('dashboard.team.invite_member') }}" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field" style="flex:1;min-width:220px">
+      <label>Email</label>
+      <input class="input" type="email" name="email" placeholder="colleague@company.com" required>
+    </div>
+    <div class="field" style="min-width:140px">
+      <label>Role</label>
+      <select class="select" name="role">
+        <option value="editor">editor</option>
+        <option value="analyst">analyst</option>
+        <option value="viewer">viewer</option>
+        {% if current_role == 'owner' %}<option value="admin">admin</option>{% endif %}
+      </select>
+    </div>
+    <button type="submit" class="btn primary">Invite</button>
+  </form>
+</section>
+{% endblock %}

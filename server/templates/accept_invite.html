@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UrlTrack — Accept invite</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/urltrack.css') }}">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+</head>
+<body>
+  <main class="launcher">
+    <div style="max-width:460px;margin:0 auto;width:100%">
+      <div class="brand" style="padding-left:0;margin-bottom:18px"><span class="brand-mark">U</span> UrlTrack</div>
+      <p class="eyebrow">Invitation</p>
+      <h1>Join the workspace.</h1>
+      {% if workspace %}<p>You were invited to <strong>{{ workspace.name }}</strong> as <strong>{{ member.role }}</strong>.</p>{% endif %}
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+      <div class="panel pad" style="margin:14px 0;border-color:{% if category=='error' %}var(--danger){% elif category=='success' %}var(--success){% else %}var(--warn){% endif %}">{{ message }}</div>
+      {% endfor %}
+      {% endwith %}
+
+      <div class="panel pad" style="margin-top:18px">
+        <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Accept invite</h2><span class="badge info mono">{{ member.user_email }}</span></div>
+        <form method="POST" id="invite-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="token" value="{{ token }}">
+          <div class="field">
+            <label>Password</label>
+            <input class="input" type="password" id="password" name="password" placeholder="At least 8 characters" required minlength="8" autofocus>
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label>Confirm password</label>
+            <input class="input" type="password" id="confirm_password" name="confirm_password" placeholder="Repeat password" required minlength="8">
+          </div>
+          <button type="submit" class="btn primary" style="width:100%;margin-top:14px">Accept and sign in</button>
+        </form>
+        <div style="text-align:center;margin-top:14px">
+          <a href="{{ url_for('auth.login') }}" class="muted" style="font-size:13px">I already have an account — sign in</a>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script>
+  document.getElementById('invite-form').addEventListener('submit', function (e) {
+    if (document.getElementById('password').value !== document.getElementById('confirm_password').value) {
+      e.preventDefault();
+      alert('Passwords do not match.');
+    }
+  });
+  </script>
+</body>
+</html>

@@ -6,7 +6,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
 from .extensions import cache, csrf, db, limiter, login_manager, migrate
-from .models import User
+from .models import User, Workspace
 from .worker import start_worker
 
 DISPOSABLE_DEFAULTS = [
@@ -111,21 +111,47 @@ def create_app() -> Flask:
             return None
         if request.blueprint in {"public", "api"}:
             return None
-        setup_allowed = {
-            "auth.setup",
-            "auth.show_setup_secret",
+        auth_allowed = {
             "auth.login",
             "auth.logout",
-            "auth.passkey_auth_options",
-            "auth.passkey_auth_verify",
+            "auth.register",
+            "auth.onboarding",
+            "auth.accept_invite",
         }
-        if request.endpoint in setup_allowed:
+        if request.endpoint in auth_allowed:
             return None
 
-        user_count = User.query.count()
-        if user_count == 0 and Config.ADMIN_BOOTSTRAP_ENABLED:
-            return redirect(url_for("auth.setup"))
+        if Workspace.query.count() == 0:
+            return redirect(url_for("auth.register"))
         return None
+
+    @app.context_processor
+    def inject_workspace():
+        from .auth_middleware import get_current_user, get_current_workspace
+        from .models import WorkspaceMember
+        user = get_current_user()
+        workspace = None
+        role = None
+        all_workspaces = []
+        if user:
+            workspace = get_current_workspace()
+            if workspace:
+                member = WorkspaceMember.query.filter_by(
+                    workspace_id=workspace.id,
+                    user_id=user.id,
+                    status="active",
+                ).first()
+                role = member.role if member else None
+            all_workspaces = WorkspaceMember.query.filter_by(
+                user_id=user.id,
+                status="active",
+            ).all()
+        return {
+            "current_workspace": workspace,
+            "current_role": role,
+            "all_workspaces": all_workspaces,
+            "current_user": user,
+        }
 
     from .routes import api, auth, public
     from .routes.dashboard import bp as dashboard_bp

@@ -1,160 +1,147 @@
 {% extends "base.html" %}
+{% block title %} — {{ link.slug }}{% endblock %}
 
-{% block breadcrumb %}Campaigns / Analytics{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
 
 {% block content %}
-<div class="card" style="margin-bottom:1.5rem;">
-    <div class="card-header">
-        <div>
-            <span class="card-title">Campaign /{{ link.slug }}</span>
-            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.35rem;">{{ link.destination }}</div>
-        </div>
-        <div style="display:flex;gap:0.5rem;">
-            <a href="{{ url_for('dashboard.dashboard_exports.export_csv', slug=link.slug) }}" class="btn btn-ghost">CSV</a>
-            <a href="{{ url_for('dashboard.dashboard_exports.export_json', slug=link.slug) }}" class="btn btn-ghost">JSON</a>
-            <a href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}" class="btn btn-primary">Edit</a>
-        </div>
-    </div>
-    <div class="dashboard-grid" style="grid-template-columns: repeat(6, 1fr);">
-        <div class="toggle-row"><label>Total visits</label><span>{{ visits|length }}</span></div>
-        <div class="toggle-row"><label>Email captures</label><span>{{ visits | selectattr('email') | list | length }}</span></div>
-        <div class="toggle-row"><label>Top countries</label><span>{{ top_countries|length }}</span></div>
-        <div class="toggle-row"><label>Top referrers</label><span>{{ top_referrers|length }}</span></div>
-        <div class="toggle-row"><label>Avg engagement</label><span>{{ ((avg_dwell_ms or 0) / 1000)|round(1) }}s</span></div>
-        <div class="toggle-row" title="Visits with >5s of reading time"><label>Engaged</label><span>{{ engaged_count }}</span></div>
-    </div>
-</div>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Campaign analytics</p>
+    <h1 class="mono">{{ link.slug }}</h1>
+    <p>{{ link.destination }}</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('public.redirect_to_url', slug=link.slug) }}" target="_blank">Open</a>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_exports.export_csv', slug=link.slug) }}">CSV</a>
+    <a class="btn" href="{{ url_for('dashboard.dashboard_exports.export_json', slug=link.slug) }}">JSON</a>
+    <a class="btn primary" href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}">Edit</a>
+  </div>
+</header>
 
-<div class="dashboard-grid" style="grid-template-columns: 2fr 1fr;">
-    <div class="card glass">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-chart-area"></i> Visits in last 7 days</span>
-        </div>
-        <div style="height:320px;">
-            <canvas id="visits-chart"></canvas>
-        </div>
-    </div>
+<section class="grid metrics">
+  <div class="panel metric compact"><div class="label">Total visits</div><div class="value">{{ visits|length }}</div><div class="delta">all time</div></div>
+  <div class="panel metric compact"><div class="label">Email captures</div><div class="value">{{ visits|selectattr('email')|list|length }}</div><div class="delta">identified</div></div>
+  <div class="panel metric compact"><div class="label">Avg engagement</div><div class="value">{{ ((avg_dwell_ms or 0) / 1000)|round(1) }}s</div><div class="delta">dwell time</div></div>
+  <div class="panel metric compact"><div class="label">Engaged</div><div class="value">{{ engaged_count }}</div><div class="delta">over 5 seconds</div></div>
+</section>
 
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-earth-americas"></i> Top countries</span>
-        </div>
-        <table class="data-table">
-            <tbody>
-                {% for country, code, count in top_countries %}
-                <tr>
-                    <td>
-                        {% if code %}
-                        <img src="https://flagcdn.com/16x12/{{ code|lower }}.png" alt="{{ country }}">
-                        {% endif %}
-                        {{ country or 'Unknown' }}
-                    </td>
-                    <td style="text-align:right;">{{ count }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="2">No country data yet.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
+<section class="grid split" style="margin-top:14px">
+  <div class="panel pad">
+    <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Visits — last 7 days</h2><span class="badge info">Momentum</span></div>
+    <div style="height:320px"><canvas id="visits-chart"></canvas></div>
+  </div>
 
-<div class="dashboard-grid" style="grid-template-columns: 1fr 2fr;">
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-share-nodes"></i> Referrers</span>
-        </div>
-        <table class="data-table">
-            <tbody>
-                {% for referrer, count in top_referrers %}
-                <tr>
-                    <td style="word-break:break-all;">{{ referrer or 'Direct' }}</td>
-                    <td style="text-align:right;">{{ count }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="2">No referrer data yet.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+  <aside class="panel">
+    <div class="panel-head"><h2>Top countries</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          {% for country, code, count in top_countries %}
+          <tr>
+            <td>{% if code %}<img src="https://flagcdn.com/16x12/{{ code|lower }}.png" alt="{{ country }}" style="margin-right:6px">{% endif %}{{ country or 'Unknown' }}</td>
+            <td style="text-align:right">{{ count }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="muted">No country data yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+  </aside>
+</section>
 
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-list-ul"></i> Visit log</span>
-        </div>
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Visitor</th>
-                    <th>Fingerprint</th>
-                    <th>Trust</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for visit in visits %}
-                <tr>
-                    <td class="text-mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                    <td>
-                        <div>{{ visit.email or visit.ip_address }}</div>
-                        <div style="font-size:0.8rem;color:var(--text-secondary);">{{ visit.city or 'Unknown' }}{% if visit.country %}, {{ visit.country }}{% endif %}</div>
-                    </td>
-                    <td>
-                        {% if visit.canvas_hash %}
-                        <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.canvas_hash) }}" class="text-accent">#{{ visit.canvas_hash[:10] }}</a>
-                        {% elif visit.etag %}
-                        <a href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.etag) }}" class="text-accent">#{{ visit.etag[:10] }}</a>
-                        {% else %}
-                        <span class="text-muted">None</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <span class="badge badge-blue">ID {{ visit.identity_confidence if visit.identity_confidence is not none else 0 }}</span>
-                        {% if visit.risk_score and visit.risk_score >= 50 %}
-                        <span class="badge badge-danger">Risk {{ visit.risk_score }}</span>
-                        {% elif visit.risk_score and visit.risk_score > 0 %}
-                        <span class="badge badge-warning">Risk {{ visit.risk_score }}</span>
-                        {% else %}
-                        <span class="badge badge-success">Risk 0</span>
-                        {% endif %}
-                        {% if visit.review_label %}
-                        <span class="badge badge-purple">{{ visit.review_label }}</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="4">No visits recorded yet.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<section class="grid split" style="margin-top:14px;grid-template-columns:minmax(280px,0.7fr) minmax(0,1.3fr)">
+  <aside class="panel">
+    <div class="panel-head"><h2>Referrers</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          {% for referrer, count in top_referrers %}
+          <tr>
+            <td style="word-break:break-all">{{ referrer or 'Direct' }}</td>
+            <td style="text-align:right">{{ count }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="muted">No referrer data yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-</div>
+  </aside>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Visit log</h2><span class="badge info">{{ visits|length }}</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Time</th><th>Visitor</th><th>Fingerprint</th><th>Trust</th></tr></thead>
+        <tbody>
+          {% for visit in visits %}
+          <tr>
+            <td class="mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') if visit.timestamp else '—' }}</td>
+            <td>
+              <div>{{ visit.email or visit.ip_address or '—' }}</div>
+              <div class="muted">{{ visit.city or 'Unknown' }}{% if visit.country %}, {{ visit.country }}{% endif %}</div>
+            </td>
+            <td>
+              {% if visit.canvas_hash %}
+              <a class="mono" style="color:var(--info)" href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.canvas_hash) }}">#{{ visit.canvas_hash[:10] }}</a>
+              {% elif visit.etag %}
+              <a class="mono" style="color:var(--info)" href="{{ url_for('dashboard.dashboard_stats.device_profile', fingerprint=visit.etag) }}">#{{ visit.etag[:10] }}</a>
+              {% else %}
+              <span class="muted">None</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge info">ID {{ visit.identity_confidence if visit.identity_confidence is not none else 0 }}</span>
+              {% if visit.risk_score and visit.risk_score >= 50 %}
+              <span class="badge danger">Risk {{ visit.risk_score }}</span>
+              {% elif visit.risk_score and visit.risk_score > 0 %}
+              <span class="badge warn">Risk {{ visit.risk_score }}</span>
+              {% else %}
+              <span class="badge success">Risk 0</span>
+              {% endif %}
+              {% if visit.review_label %}<span class="badge">{{ visit.review_label }}</span>{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="muted" style="text-align:center;padding:32px">No visits recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
 {% endblock %}
 
 {% block scripts %}
-<script nonce="{{ csp_nonce|default('') }}">
-    const ctx = document.getElementById('visits-chart').getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: {{ chart_labels | tojson }},
-            datasets: [{
-                data: {{ chart_values | tojson }},
-                borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59,130,246,0.16)',
-                tension: 0.35,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true },
-                x: { grid: { display: false } }
-            }
-        }
-    });
+<script>
+(function () {
+  var el = document.getElementById('visits-chart');
+  if (!el || typeof Chart === 'undefined') return;
+  new Chart(el.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: {{ chart_labels | tojson }},
+      datasets: [{
+        data: {{ chart_values | tojson }},
+        borderColor: '#5b8cff',
+        backgroundColor: 'rgba(91,140,255,0.16)',
+        tension: 0.35,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#9aa6b8' } },
+        x: { grid: { display: false }, ticks: { color: '#9aa6b8' } }
+      }
+    }
+  });
+}());
 </script>
 {% endblock %}

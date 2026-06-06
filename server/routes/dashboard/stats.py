@@ -2,8 +2,9 @@ import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
-from flask_login import login_required
+from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+
+from ...auth_middleware import workspace_required
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
@@ -131,7 +132,7 @@ def _visit_sort(visit_query, sort: str):
 
 
 @bp.route("/search")
-@login_required
+@workspace_required("analyst")
 def global_search():
     query = sanitize(request.args.get("q"), 255)
     if not query:
@@ -160,7 +161,7 @@ def global_search():
 
 
 @bp.route("/timeline")
-@login_required
+@workspace_required("analyst")
 def global_timeline():
     filters = {
         "q": sanitize(request.args.get("q"), 255),
@@ -215,7 +216,7 @@ def global_timeline():
 
 
 @bp.route("/stats/<slug>")
-@login_required
+@workspace_required("analyst")
 def stats(slug: str):
     link = Link.query.filter_by(slug=slug).first_or_404()
     visits = Visit.query.filter_by(link_id=link.id).order_by(Visit.timestamp.desc()).all()
@@ -285,7 +286,7 @@ def stats(slug: str):
 
 
 @bp.route("/device/<fingerprint>")
-@login_required
+@workspace_required("analyst")
 def device_profile(fingerprint: str):
     visits = (
         Visit.query.filter(
@@ -353,7 +354,7 @@ def device_profile(fingerprint: str):
 
 
 @bp.route("/cross")
-@login_required
+@workspace_required("analyst")
 def cross_tracking():
     group_by = sanitize(request.args.get("group_by"), 32) or "email"
     groups = {
@@ -468,7 +469,7 @@ def cross_tracking():
 
 
 @bp.route("/graph")
-@login_required
+@workspace_required("analyst")
 def graph():
     node_meta = {
         "visitor": ("#00C853", "person"),
