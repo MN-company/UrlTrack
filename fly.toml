@@ -4,13 +4,15 @@ primary_region = "fra"
 [build]
 
 [env]
+  DATABASE_URL = "sqlite:////data/ulrtrack.db"
   FLASK_APP = "server:create_app"
   TRUST_PROXY_HEADERS = "true"
   SESSION_COOKIE_SECURE = "true"
-  SKIP_BACKGROUND_WORKER = "1"
+  SKIP_BACKGROUND_WORKER = "false"
 
-[deploy]
-  release_command = "python -m flask --app server:create_app db upgrade"
+[mounts]
+  source = "ulrtrack_data"
+  destination = "/data"
 
 [http_service]
   internal_port = 8000

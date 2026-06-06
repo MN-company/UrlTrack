@@ -18,4 +18,4 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--timeout", "120", "server.wsgi:app"]
+CMD ["sh", "-c", "python -m flask --app server:create_app db upgrade && exec gunicorn --bind 0.0.0.0:8000 --workers 1 --timeout 120 server.wsgi:app"]
