@@ -36,6 +36,7 @@ def test_dashboard_primary_pages_render_after_ux_refresh(app, client, auth):
         "/dashboard/stats/ux-smoke",
         "/dashboard/timeline",
         "/dashboard/cross",
+        "/dashboard/global-intel",
         "/dashboard/graph",
         "/dashboard/device/ux-canvas",
         "/dashboard/leads",
@@ -50,4 +51,4 @@ def test_dashboard_primary_pages_render_after_ux_refresh(app, client, auth):
     for path in pages:
         response = client.get(path)
         assert response.status_code == 200, path
-        assert b"app-shell" in response.data, path
+        assert b"app-topbar" in response.data, path

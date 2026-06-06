@@ -1,56 +1,74 @@
 <!doctype html>
-<html lang="en">
+<html lang="it" data-theme-choice="system">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>UrlTrack{% block title %}{% endblock %}</title>
+  <script>
+    (function () {
+      var choice = localStorage.getItem('urltrack-theme') || 'system';
+      if (!['dark', 'light', 'system'].includes(choice)) choice = 'system';
+      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.dataset.themeChoice = choice;
+      document.documentElement.dataset.theme = choice === 'system' ? (dark ? 'dark' : 'light') : choice;
+    }());
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/urltrack.css') }}">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   {% block head %}{% endblock %}
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">U</span> UrlTrack</div>
-      <nav class="nav">
-        <div class="nav-section">Workspace</div>
-        <a data-nav href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}">Dashboard</a>
-        <a data-nav href="{{ url_for('dashboard.dashboard_links.links') }}">Links</a>
-        <a data-nav href="{{ url_for('dashboard.dashboard_links.create_full') }}">Link Creator</a>
-        <a data-nav href="{{ url_for('dashboard.dashboard_leads.leads_list') }}">Leads</a>
-        <div class="nav-section">Investigation</div>
-        <a data-nav href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}">Journey Graph</a>
-        <a data-nav href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">Timeline</a>
-        <a data-nav href="{{ url_for('dashboard.dashboard_ai.ai_console') }}">AI Analyst</a>
-        <div class="nav-section">Settings</div>
-        <a data-nav href="{{ url_for('dashboard.dashboard_links.settings') }}">Settings</a>
-        {% if current_role in ['owner', 'admin'] %}
-        <a data-nav href="{{ url_for('dashboard.team.team_settings') }}">Team</a>
-        {% endif %}
-      </nav>
-      <div class="sidebar-footer">
-        <span class="status-dot"></span>
-        {% if current_workspace %}{{ current_workspace.name }}{% else %}UrlTrack{% endif %}<br>
-        <span class="mono">{% if current_role %}{{ current_role }}{% else %}guest{% endif %}</span>
-        <br><a href="{{ url_for('auth.logout') }}" style="color:var(--muted);font-size:11px;">Sign out</a>
+  <header class="app-topbar" id="appTopbar">
+    <a class="topbar-logo" href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}" aria-label="UrlTrack home">UT</a>
+    <nav class="topbar-nav" id="topNav" aria-label="Navigazione principale">
+      <a data-nav class="topbar-item" href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}">Home</a>
+      <a data-nav class="topbar-item" href="{{ url_for('dashboard.dashboard_links.links') }}">Progetti</a>
+      <a data-nav class="topbar-item" href="{{ url_for('dashboard.dashboard_links.create_full') }}">Link Studio</a>
+      <a data-nav class="topbar-item" href="{{ url_for('dashboard.dashboard_ai.ai_console') }}">AI Analyst</a>
+      <a data-nav class="topbar-item" href="{{ url_for('dashboard.dashboard_stats.cross_tracking') }}">Cross Tracking</a>
+      <a data-nav class="topbar-item" href="{{ url_for('dashboard.dashboard_stats.global_intel') }}">Global Intel</a>
+      <a data-nav class="topbar-item" href="{{ url_for('dashboard.dashboard_stats.graph') }}">Grafo</a>
+      <div class="more-wrap" id="moreWrap">
+        <button class="more-btn" id="moreBtn" type="button">More <span aria-hidden="true">⌄</span></button>
+        <div class="more-dropdown" id="moreDropdown"></div>
       </div>
-    </aside>
-    <main class="main">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-      <div class="panel pad" style="margin-bottom:12px;border-color:{% if category=='error' %}var(--danger){% elif category=='success' %}var(--success){% else %}var(--warn){% endif %}">{{ message }}</div>
-      {% endfor %}
-      {% endwith %}
-      {% block content %}{% endblock %}
-    </main>
-  </div>
-  <nav class="mobile-nav">
-    <a data-nav href="{{ url_for('dashboard.dashboard_links.dashboard_home') }}">Home</a>
-    <a data-nav href="{{ url_for('dashboard.dashboard_links.create_full') }}">Creator</a>
-    <a class="create" href="{{ url_for('dashboard.dashboard_links.create_full') }}">+</a>
-    <a data-nav href="{{ url_for('dashboard.dashboard_ai.ai_console') }}">AI</a>
-    <a data-nav href="{{ url_for('dashboard.dashboard_leads.leads_list') }}">Leads</a>
-  </nav>
+    </nav>
+    <div class="topbar-right">
+      <div class="theme-pill" aria-label="Tema">
+        <button class="theme-opt" data-theme-option="dark" title="Scuro" aria-label="Tema scuro">◐</button>
+        <button class="theme-opt" data-theme-option="light" title="Chiaro" aria-label="Tema chiaro">○</button>
+        <button class="theme-opt" data-theme-option="system" title="Sistema" aria-label="Tema di sistema">▣</button>
+      </div>
+      <div class="avatar-wrap">
+        <button class="topbar-avatar" id="avatarBtn" type="button" aria-label="Account">
+          {{ (current_user_email or 'U')[0]|upper }}
+        </button>
+        <div class="avatar-dropdown" id="avatarDropdown">
+          <div class="user-info">
+            <strong>{{ current_workspace.name if current_workspace else 'UrlTrack' }}</strong>
+            <span>{{ current_user_email or 'guest' }}</span>
+          </div>
+          <a href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">Timeline</a>
+          <a href="{{ url_for('dashboard.dashboard_leads.leads_list') }}">Leads</a>
+          <a href="{{ url_for('dashboard.dashboard_links.settings') }}">Impostazioni</a>
+          {% if current_role in ['owner', 'admin'] %}
+          <a href="{{ url_for('dashboard.team.team_settings') }}">Team</a>
+          {% endif %}
+          <a class="logout-link" href="{{ url_for('auth.logout') }}">Log out</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="flash-message {{ category }}">{{ message }}</div>
+    {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
   <script src="{{ url_for('static', filename='js/urltrack.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>

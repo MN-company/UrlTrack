@@ -11,20 +11,12 @@ from flask_login import current_user, login_required
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ...extensions import db
-from ...models import SetupState, User
+from ...models import User
+from ...supabase_client import get_supabase, supabase_enabled
 from ...utils import sanitize
 
 
 bp = Blueprint("dashboard_security", __name__)
-
-
-def _setup_state() -> SetupState:
-    state = db.session.get(SetupState, 1)
-    if state is None:
-        state = SetupState(id=1, setup_completed=False)
-        db.session.add(state)
-        db.session.commit()
-    return state
 
 
 @bp.route("/security")
@@ -161,44 +153,23 @@ def change_password():
         flash("New passwords do not match.", "error")
         return redirect(url_for("dashboard.dashboard_security.security_settings"))
 
+    if supabase_enabled() and session.get("supabase_access_token"):
+        try:
+            client = get_supabase()
+            client.auth.set_session(
+                session["supabase_access_token"],
+                session.get("supabase_refresh_token", ""),
+            )
+            result = client.auth.update_user({"password": new_password})
+            result_session = getattr(result, "session", None)
+            if result_session:
+                session["supabase_access_token"] = result_session.access_token
+                session["supabase_refresh_token"] = result_session.refresh_token
+        except Exception:
+            flash("Supabase non ha accettato il cambio password. Nessuna modifica applicata.", "error")
+            return redirect(url_for("dashboard.dashboard_security.security_settings"))
+
     user.password_hash = generate_password_hash(new_password)
     db.session.commit()
     flash("Password updated successfully.", "success")
-    return redirect(url_for("dashboard.dashboard_security.security_settings"))
-
-
-@bp.route("/security/admins/create", methods=["POST"])
-@login_required
-def create_admin():
-    state = _setup_state()
-    secret_code = sanitize(request.form.get("secret_code"), 128)
-    email = sanitize(request.form.get("email"), 255).lower()
-    username = sanitize(request.form.get("username"), 80)
-    password = request.form.get("password", "")
-    confirm_password = request.form.get("confirm_password", "")
-
-    if not state.admin_secret_hash or not check_password_hash(state.admin_secret_hash, secret_code):
-        flash("Invalid server secret code.", "error")
-        return redirect(url_for("dashboard.dashboard_security.security_settings"))
-    if not email or "@" not in email:
-        flash("A valid email is required.", "error")
-        return redirect(url_for("dashboard.dashboard_security.security_settings"))
-    if User.query.filter_by(email=email).first():
-        flash("An admin with that email already exists.", "error")
-        return redirect(url_for("dashboard.dashboard_security.security_settings"))
-    if len(password) < 12:
-        flash("Password must be at least 12 characters long.", "error")
-        return redirect(url_for("dashboard.dashboard_security.security_settings"))
-    if password != confirm_password:
-        flash("Passwords do not match.", "error")
-        return redirect(url_for("dashboard.dashboard_security.security_settings"))
-
-    admin = User(
-        email=email,
-        username=username or email.split("@", 1)[0],
-        password_hash=generate_password_hash(password),
-    )
-    db.session.add(admin)
-    db.session.commit()
-    flash("Admin created successfully.", "success")
     return redirect(url_for("dashboard.dashboard_security.security_settings"))

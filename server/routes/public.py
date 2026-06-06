@@ -75,13 +75,13 @@ def health():
 
 @bp.route("/", methods=["GET"])
 def index():
+    has_workspace = False
     try:
         from ..models import Workspace
-        if Workspace.query.count() == 0:
-            return redirect(url_for("auth.register"))
+        has_workspace = Workspace.query.count() > 0
     except Exception:
         pass
-    return redirect(url_for("auth.login"))
+    return render_template("landing.html", has_workspace=has_workspace)
 
 
 @bp.route("/favicon.ico", methods=["GET"])

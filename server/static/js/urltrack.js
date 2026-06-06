@@ -1,14 +1,65 @@
 function setActiveNav() {
-  const current = location.pathname.split('/').pop() || 'index.html';
-  const aliases = {
-    'lead-detail.html': 'leads.html',
-    'visit-detail.html': 'dashboard.html'
-  };
-  const active = aliases[current] || current;
   document.querySelectorAll('[data-nav]').forEach((link) => {
-    const href = link.getAttribute('href');
-    if (href === active) link.classList.add('active');
+    const href = new URL(link.href, location.origin).pathname.replace(/\/$/, '');
+    const current = location.pathname.replace(/\/$/, '');
+    if (href === current || (href && href !== '/dashboard' && current.startsWith(href + '/'))) {
+      link.classList.add('active');
+    }
   });
+}
+
+function bindAppShell() {
+  const moreWrap = document.querySelector('#moreWrap');
+  const moreButton = document.querySelector('#moreBtn');
+  const moreDropdown = document.querySelector('#moreDropdown');
+  const avatarButton = document.querySelector('#avatarBtn');
+  const avatarDropdown = document.querySelector('#avatarDropdown');
+  const navLinks = [...document.querySelectorAll('#topNav > .topbar-item')];
+
+  function rebuildOverflow() {
+    if (!moreDropdown || !moreWrap) return;
+    moreDropdown.innerHTML = '';
+    navLinks.forEach((link) => {
+      if (getComputedStyle(link).display === 'none') {
+        const clone = link.cloneNode(true);
+        clone.className = '';
+        moreDropdown.appendChild(clone);
+      }
+    });
+    moreWrap.style.display = moreDropdown.children.length ? 'block' : '';
+  }
+
+  function applyTheme(choice, persist = true) {
+    const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.dataset.themeChoice = choice;
+    document.documentElement.dataset.theme = choice === 'system' ? (dark ? 'dark' : 'light') : choice;
+    if (persist) localStorage.setItem('urltrack-theme', choice);
+    document.querySelectorAll('[data-theme-option]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.themeOption === choice);
+    });
+  }
+
+  document.querySelectorAll('[data-theme-option]').forEach((button) => {
+    button.addEventListener('click', () => applyTheme(button.dataset.themeOption));
+  });
+  applyTheme(document.documentElement.dataset.themeChoice || 'system', false);
+
+  moreButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    moreDropdown.classList.toggle('open');
+    avatarDropdown?.classList.remove('open');
+  });
+  avatarButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    avatarDropdown.classList.toggle('open');
+    moreDropdown?.classList.remove('open');
+  });
+  document.addEventListener('click', () => {
+    moreDropdown?.classList.remove('open');
+    avatarDropdown?.classList.remove('open');
+  });
+  window.addEventListener('resize', rebuildOverflow);
+  rebuildOverflow();
 }
 
 function bindToggles() {
@@ -156,8 +207,25 @@ function bindAiConsole() {
   });
 }
 
+function bindSmartEntry() {
+  document.querySelectorAll('[data-smart-entry]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const value = form.querySelector('input[name="command"]')?.value.trim();
+      if (!value) return;
+      if (value.startsWith('@')) {
+        location.href = form.dataset.aiUrl + '?message=' + encodeURIComponent(value);
+      } else {
+        const destination = /^https?:\/\//i.test(value) ? value : 'https://' + value;
+        location.href = form.dataset.createUrl + '?destination=' + encodeURIComponent(destination);
+      }
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   setActiveNav();
+  bindAppShell();
   bindToggles();
   bindModeChips();
   bindTabs();
@@ -166,4 +234,5 @@ document.addEventListener('DOMContentLoaded', () => {
   bindCreatorCanvas();
   bindRunPreview();
   bindAiConsole();
+  bindSmartEntry();
 });

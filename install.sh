@@ -126,6 +126,10 @@ SECRET_KEY=$secret_key
 SERVER_URL=$server_url
 DATABASE_URL=$database_url
 
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
 GEMINI_API_KEY=$gemini_api_key
 GEMINI_MODEL=$gemini_model
 
@@ -146,6 +150,12 @@ TELEGRAM_CHAT_ID=$telegram_chat_id
 WEBHOOK_URL=
 WEBHOOK_SECRET=
 SMART_FOLLOWUP_HOURS=48
+
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
 
 TURNSTILE_SITE_KEY=$turnstile_site
 TURNSTILE_SECRET_KEY=$turnstile_secret
@@ -350,9 +360,9 @@ fi
 
 echo ""
 success "UrlTrack is installed."
-echo "  1. Open $SERVER_URL_DISPLAY/setup on first boot"
-echo "  2. Create the first admin account"
-echo "  3. Save the one-time admin secret code"
+echo "  1. Open $SERVER_URL_DISPLAY/register on first boot"
+echo "  2. Create the first owner account"
+echo "  3. Name the initial workspace"
 
 if [[ "$RUN_SERVER" == "true" ]]; then
     echo ""

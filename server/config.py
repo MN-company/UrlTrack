@@ -47,6 +47,9 @@ _load_dotenv()
 class Config:
     SECRET_KEY: str = os.environ["SECRET_KEY"]
     DATABASE_URL: str = os.getenv("DATABASE_URL", DEFAULT_DB_URI)
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+    SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     SERVER_URL: str = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
@@ -77,8 +80,6 @@ class Config:
     SESSION_COOKIE_HTTPONLY: bool = True
     SESSION_COOKIE_SAMESITE: str = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
     SKIP_BACKGROUND_WORKER: bool = _bool_env("SKIP_BACKGROUND_WORKER", False)
-    ADMIN_BOOTSTRAP_ENABLED: bool = _bool_env("ADMIN_BOOTSTRAP_ENABLED", True)
-    SETUP_SECRET_LENGTH: int = _int_env("SETUP_SECRET_LENGTH", 24)
     MALICIOUS_IP_REFRESH_SECONDS: int = _int_env("MALICIOUS_IP_REFRESH_SECONDS", 21600)
     MALICIOUS_IP_MIN_COUNT: int = _int_env("MALICIOUS_IP_MIN_COUNT", 1000)
     SMART_FOLLOWUP_HOURS: int = _int_env("SMART_FOLLOWUP_HOURS", 48)
@@ -89,6 +90,10 @@ class Config:
             "dashboard",
             "login",
             "logout",
+            "register",
+            "onboarding",
+            "accept-invite",
+            "health",
             "setup",
             "api",
             "fp",
@@ -122,6 +127,9 @@ class Config:
             "WTF_CSRF_SSL_STRICT": config.WTF_CSRF_SSL_STRICT,
             "MAX_CONTENT_LENGTH": config.MAX_CONTENT_LENGTH,
             "SERVER_URL": config.SERVER_URL,
+            "SUPABASE_URL": config.SUPABASE_URL,
+            "SUPABASE_ANON_KEY": config.SUPABASE_ANON_KEY,
+            "SUPABASE_SERVICE_ROLE_KEY": config.SUPABASE_SERVICE_ROLE_KEY,
             "TELEGRAM_BOT_TOKEN": config.TELEGRAM_BOT_TOKEN,
             "TELEGRAM_CHAT_ID": config.TELEGRAM_CHAT_ID,
             "WEBHOOK_URL": config.WEBHOOK_URL,
@@ -146,8 +154,6 @@ class Config:
             "RATE_LIMIT_REDIRECT": config.RATE_LIMIT_REDIRECT,
             "RATE_LIMIT_AUTH": config.RATE_LIMIT_AUTH,
             "CACHE_DEFAULT_TIMEOUT": config.CACHE_DEFAULT_TIMEOUT,
-            "ADMIN_BOOTSTRAP_ENABLED": config.ADMIN_BOOTSTRAP_ENABLED,
-            "SETUP_SECRET_LENGTH": config.SETUP_SECRET_LENGTH,
             "MALICIOUS_IP_REFRESH_SECONDS": config.MALICIOUS_IP_REFRESH_SECONDS,
             "MALICIOUS_IP_MIN_COUNT": config.MALICIOUS_IP_MIN_COUNT,
             "SMART_FOLLOWUP_HOURS": config.SMART_FOLLOWUP_HOURS,

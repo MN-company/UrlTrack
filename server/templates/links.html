@@ -1,64 +1,51 @@
 {% extends "base.html" %}
-{% block title %} — Links{% endblock %}
+{% block title %} — Progetti{% endblock %}
 
 {% block content %}
 <header class="topbar">
   <div>
-    <p class="eyebrow">{{ current_workspace.name if current_workspace else 'UrlTrack' }} / Campaigns</p>
-    <h1>Tracking links</h1>
+    <p class="eyebrow">{{ current_workspace.name if current_workspace else 'UrlTrack' }} / Campagne</p>
+    <h1>Progetti</h1>
+    <p>Ogni progetto raccoglie link, visite, identità e regole di protezione.</p>
   </div>
   <div class="actions">
     <a class="btn" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">Timeline</a>
-    <a class="btn primary" href="{{ url_for('dashboard.dashboard_links.create_full') }}">New link</a>
+    <a class="btn primary" href="{{ url_for('dashboard.dashboard_links.create_full') }}">Nuovo progetto</a>
   </div>
 </header>
 
-<section class="panel">
-  <div class="panel-head">
-    <h2>Active campaigns</h2>
-    <span class="badge info">{{ links|length }}</span>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Slug</th>
-          <th>Destination</th>
-          <th>Defenses</th>
-          <th>Created</th>
-          <th style="text-align:right">Controls</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for link in links %}
-        <tr>
-          <td class="mono">
-            <a href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}" style="color:var(--fg)">{{ link.slug }}</a>
-          </td>
-          <td class="muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis">{{ link.destination }}</td>
-          <td>
-            {% if link.enable_captcha %}<span class="badge warn">Captcha</span>{% endif %}
-            {% if link.block_vpn %}<span class="badge danger">Block VPN</span>{% endif %}
-            {% if link.require_email %}<span class="badge info">Email gate</span>{% endif %}
-            {% if link.password_hash %}<span class="badge">Password</span>{% endif %}
-            {% if link.block_bots %}<span class="badge">Bot block</span>{% endif %}
-          </td>
-          <td class="muted">{{ link.created_at.strftime('%b %d') if link.created_at else '—' }}</td>
-          <td style="text-align:right">
-            <a class="badge info" href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}">Stats</a>
-            <a class="badge" href="{{ url_for('dashboard.dashboard_links.qr_view', slug=link.slug) }}">QR</a>
-            <a class="badge" href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}">Edit</a>
-            <form method="POST" action="{{ url_for('dashboard.dashboard_links.delete_link', link_id=link.id) }}" style="display:inline" onsubmit="return confirm('Delete /{{ link.slug }}?')">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="badge danger" style="border:none;cursor:pointer;background:transparent">Delete</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="muted" style="text-align:center;padding:32px">No links yet. <a href="{{ url_for('dashboard.dashboard_links.create_full') }}">Create your first link.</a></td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<section class="project-grid">
+  {% for link in links %}
+  <article class="project-card">
+    <div class="project-card-top">
+      <span class="folder-glyph">⌑</span>
+      <span class="badge {% if link.block_vpn or link.enable_captcha %}warn{% else %}success{% endif %}">{% if link.block_vpn or link.enable_captcha %}Protetto{% else %}Attivo{% endif %}</span>
+    </div>
+    <div>
+      <h2>{{ link.slug }}</h2>
+      <p class="project-destination">{{ link.destination }}</p>
+    </div>
+    <div class="project-meta">
+      <span>{{ link.visits|length if link.visits else 0 }} visite</span>
+      <span>{{ link.created_at.strftime('%d %b %Y') if link.created_at else '—' }}</span>
+    </div>
+    <div class="project-actions">
+      <a class="btn primary" href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}">Apri</a>
+      <a class="btn" href="{{ url_for('dashboard.dashboard_links.qr_view', slug=link.slug) }}">QR</a>
+      <a class="btn" href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}">Modifica</a>
+      <form method="POST" action="{{ url_for('dashboard.dashboard_links.delete_link', link_id=link.id) }}" onsubmit="return confirm('Eliminare /{{ link.slug }}?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn" type="submit">Elimina</button>
+      </form>
+    </div>
+  </article>
+  {% else %}
+  <article class="project-card project-empty">
+    <span class="folder-glyph">+</span>
+    <h2>Nessun progetto</h2>
+    <p>Crea il primo link e inizia a raccogliere intelligence.</p>
+    <a class="btn primary" href="{{ url_for('dashboard.dashboard_links.create_full') }}">Apri Link Studio</a>
+  </article>
+  {% endfor %}
 </section>
 {% endblock %}

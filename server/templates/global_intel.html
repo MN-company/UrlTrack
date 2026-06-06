@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %} — Global Intel{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Global Intel / Workspace overview</p>
+    <h1>Segnali, provenienza e rischio in un solo quadro.</h1>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">Timeline</a>
+    <a class="btn primary" href="{{ url_for('dashboard.dashboard_stats.graph') }}">Apri grafo</a>
+  </div>
+</header>
+
+<section class="grid metrics">
+  <article class="panel metric compact"><div class="label">Visite totali</div><div class="value">{{ total_visits }}</div><div class="delta">tutto il workspace</div></article>
+  <article class="panel metric compact"><div class="label">Identificate</div><div class="value">{{ identified }}</div><div class="delta">email disponibile</div></article>
+  <article class="panel metric compact"><div class="label">Segnali di rischio</div><div class="value">{{ suspicious }}</div><div class="delta"><span class="badge {% if suspicious %}danger{% else %}success{% endif %}">{% if suspicious %}Da verificare{% else %}Pulito{% endif %}</span></div></article>
+  <article class="panel metric compact"><div class="label">Progetti</div><div class="value">{{ links_count }}</div><div class="delta">link attivi</div></article>
+</section>
+
+<section class="grid two-col" style="margin-top:14px">
+  <article class="panel">
+    <div class="panel-head"><h2>Paesi principali</h2><span class="badge info">{{ countries|length }}</span></div>
+    <div class="queue">
+      {% for country, count in countries %}
+      <div class="queue-item"><div class="queue-top"><strong>{{ country }}</strong><span class="badge">{{ count }} visite</span></div></div>
+      {% else %}<div class="queue-item muted">Nessun dato geografico.</div>{% endfor %}
+    </div>
+  </article>
+  <article class="panel">
+    <div class="panel-head"><h2>Organizzazioni e reti</h2><span class="badge info">{{ organizations|length }}</span></div>
+    <div class="queue">
+      {% for org, count in organizations %}
+      <div class="queue-item"><div class="queue-top"><strong>{{ org }}</strong><span class="badge">{{ count }} visite</span></div></div>
+      {% else %}<div class="queue-item muted">Nessuna organizzazione rilevata.</div>{% endfor %}
+    </div>
+  </article>
+</section>
+
+<section class="panel" style="margin-top:14px">
+  <div class="panel-head"><h2>Priorità intelligence</h2><a class="badge info" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}?sort=risk">Vedi tutto</a></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Visita</th><th>Progetto</th><th>Origine</th><th>Identità</th><th>Rischio</th></tr></thead>
+      <tbody>
+        {% for visit in recent_risk %}
+        <tr>
+          <td class="mono">{{ visit.timestamp.strftime('%Y-%m-%d %H:%M') if visit.timestamp else '—' }}</td>
+          <td class="mono">/{{ visit.link.slug if visit.link else '—' }}</td>
+          <td>{{ visit.email or visit.ip_address or 'Sconosciuta' }}<div class="muted">{{ visit.country or '—' }} · {{ visit.org or 'rete sconosciuta' }}</div></td>
+          <td><span class="badge info">{{ visit.identity_confidence or 0 }}</span></td>
+          <td><span class="badge {% if (visit.risk_score or 0) >= 65 %}danger{% else %}warn{% endif %}">{{ visit.risk_score or 0 }}</span></td>
+        </tr>
+        {% else %}<tr><td colspan="5" class="muted" style="text-align:center;padding:32px">Nessun segnale di rischio.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

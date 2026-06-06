@@ -76,7 +76,7 @@ That command will:
 Then open:
 
 - `http://127.0.0.1:8000/`
-- first boot will send you to `http://127.0.0.1:8000/setup`
+- on first boot use `http://127.0.0.1:8000/register`
 
 ## Docker mode
 
@@ -122,13 +122,25 @@ DATABASE_URL=sqlite:///data/urltrack.db
 
 On a clean database:
 
-1. open `/setup`
-2. create first admin account
-3. save the one-time admin secret shown after setup
-4. sign in to dashboard
-5. optionally enable TOTP or passkeys from security settings
+1. open `/register`
+2. create the first owner account
+3. name the initial workspace
+4. optionally enable TOTP or passkeys from security settings
+5. invite additional members from Team settings
 
-That one-time admin secret is only for future admin creation. It is not part of normal login.
+Additional accounts are invite-only and receive a workspace role (`viewer`, `analyst`, `editor`, `admin`, or `owner`).
+
+## Authentication
+
+Local authentication works without external services. Supabase Auth is optional:
+
+```env
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+When Supabase is configured, UrlTrack still creates a local user record for Flask sessions, TOTP, passkeys, and workspace membership. Without those variables, the same UI uses local password authentication.
 
 ## Main areas of the dashboard
 
@@ -154,7 +166,7 @@ An assistant view that can reason over visits and search context using commands 
 
 ### Settings
 
-Manage runtime values, domain lists, Telegram credentials, AI model settings, and other operational toggles.
+Manage domain lists and workspace-specific Telegram/webhook integrations. Server-wide values such as `SERVER_URL`, Gemini, retention, proxy trust, and Supabase are controlled only through `.env`.
 
 ## Optional integrations
 
@@ -192,6 +204,20 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 ```
 
+Telegram and webhook credentials entered in the dashboard are stored per workspace. Global `.env` notification values are used only for single-workspace installations.
+
+### Team invites
+
+SMTP is optional. Without SMTP, invite URLs are printed in the server log.
+
+```env
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
+```
+
 ### Cloudflare Turnstile
 
 Used only if you enable captcha gate on links.
@@ -226,10 +252,11 @@ Run migrations:
 SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
 ```
 
-Create another admin from CLI:
+Run tests:
 
 ```bash
-python -m server.create_admin
+pip install -r requirements-dev.txt
+SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m pytest -q
 ```
 
 Run local server with repo interpreter:

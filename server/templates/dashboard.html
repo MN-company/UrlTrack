@@ -1,121 +1,56 @@
 {% extends "base.html" %}
-{% block title %} — Dashboard{% endblock %}
+{% block title %} — Home{% endblock %}
 
 {% block content %}
-<header class="topbar">
-  <div>
-    <p class="eyebrow">{{ current_workspace.name if current_workspace else 'UrlTrack' }} / Today</p>
-    <h1>Command center</h1>
-  </div>
-  <div class="actions">
-    <a class="btn" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">Timeline</a>
-    <a class="btn primary" href="{{ url_for('dashboard.dashboard_links.create_full') }}">New link</a>
-  </div>
-</header>
+<section class="home-hero">
+  <p class="home-tagline">Hi {{ (current_user_email or 'there').split('@')[0]|capitalize }}, <strong>are you ready?</strong></p>
+  <form class="home-command" data-smart-entry data-create-url="{{ url_for('dashboard.dashboard_links.create_full') }}" data-ai-url="{{ url_for('dashboard.dashboard_ai.ai_console') }}">
+    <input name="command" placeholder="Incolla un link per creare una campagna, oppure usa @ per interrogare l'AI" autocomplete="off">
+    <button type="submit" aria-label="Invia">→</button>
+  </form>
 
-<section class="grid metrics">
-  <div class="panel metric compact">
-    <div class="label">Total visits</div>
-    <div class="value">{{ total_visits }}</div>
-    <div class="delta">all campaigns</div>
-  </div>
-  <div class="panel metric compact">
-    <div class="label">Identified visitors</div>
-    <div class="value">{{ identified_visitors }}</div>
-    <div class="delta">email captured</div>
-  </div>
-  <div class="panel metric compact">
-    <div class="label">Reviewed</div>
-    <div class="value">{{ reviewed_visits }}</div>
-    <div class="delta">manual labels applied</div>
-  </div>
-  <div class="panel metric compact">
-    <div class="label">High risk</div>
-    <div class="value">{{ high_risk_visits }}</div>
-    <div class="delta"><span class="badge {% if high_risk_visits > 0 %}danger{% else %}success{% endif %}">{% if high_risk_visits > 0 %}Needs review{% else %}Clean{% endif %}</span></div>
-  </div>
-  <div class="panel metric compact">
-    <div class="label">Active links</div>
-    <div class="value">{{ links|length }}</div>
-    <div class="delta">tracking campaigns</div>
-  </div>
-  <div class="panel metric compact">
-    <div class="label">Priority queue</div>
-    <div class="value">{{ priority_visits|length }}</div>
-    <div class="delta"><span class="badge {% if priority_visits %}warn{% else %}success{% endif %}">{% if priority_visits %}Needs attention{% else %}All clear{% endif %}</span></div>
+  <div class="recent-projects">
+    <div class="section-kicker">Progetti recenti</div>
+    <div class="project-scroll">
+      {% for link in links[:6] %}
+      <a class="project-folder" href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}">
+        <span class="folder-glyph">⌑</span>
+        <strong>{{ link.slug }}</strong>
+        <small>{{ link.visits|length if link.visits else 0 }} visite</small>
+      </a>
+      {% else %}
+      <a class="project-folder empty" href="{{ url_for('dashboard.dashboard_links.create_full') }}">
+        <span class="folder-glyph">+</span>
+        <strong>Primo progetto</strong>
+        <small>Crea un link</small>
+      </a>
+      {% endfor %}
+    </div>
   </div>
 </section>
 
-<section class="grid triple" style="margin-top:14px">
-  <div class="panel">
-    <div class="panel-head"><h2>Recent activity</h2><a class="badge info" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">Timeline</a></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Time</th><th>Campaign</th><th>Country</th><th>Device</th><th>Status</th></tr></thead>
-        <tbody>
-          {% for visit in visits %}
-          <tr onclick="location.href='{{ url_for('dashboard.dashboard_stats.global_timeline') }}'">
-            <td>{{ visit.timestamp.strftime('%H:%M') if visit.timestamp else '-' }}</td>
-            <td class="mono">{{ visit.link.slug if visit.link else '-' }}</td>
-            <td>{{ visit.country or '-' }}</td>
-            <td>{{ visit.os_family or '?' }} {{ visit.device_type or '' }}</td>
-            <td>
-              {% if visit.is_suspicious or (visit.risk_score and visit.risk_score >= 65) %}
-              <span class="badge danger">Suspicious</span>
-              {% elif visit.review_label %}
-              <span class="badge warn">{{ visit.review_label }}</span>
-              {% elif visit.email %}
-              <span class="badge success">Lead</span>
-              {% else %}
-              <span class="badge">Visit</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="5" class="muted" style="text-align:center;padding:24px">No visits yet</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+<section class="home-intel panel">
+  <div class="panel-head">
+    <div><h2>Today in UrlTrack</h2><p>Eventi recenti da rivedere prima di aprire una campagna.</p></div>
+    <a class="badge info" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">Apri timeline</a>
   </div>
+  <div class="home-event-grid">
+    {% for visit in visits[:4] %}
+    <a class="home-event" href="{{ url_for('dashboard.dashboard_stats.stats', slug=visit.link.slug) if visit.link else url_for('dashboard.dashboard_stats.global_timeline') }}">
+      <span class="event-type">{% if visit.risk_score and visit.risk_score >= 50 %}Security{% elif visit.email %}Identity{% else %}Campaign{% endif %}</span>
+      <strong>{{ visit.email or visit.ip_address or 'Nuova visita anonima' }}</strong>
+      <span>{{ visit.timestamp.strftime('%H:%M') if visit.timestamp else 'ora' }} · /{{ visit.link.slug if visit.link else '—' }} · trust {{ visit.identity_confidence or 0 }}</span>
+    </a>
+    {% else %}
+    <a class="home-event" href="{{ url_for('dashboard.dashboard_links.create_full') }}"><span class="event-type">Start</span><strong>Crea il primo link tracciato</strong><span>I segnali appariranno qui.</span></a>
+    {% endfor %}
+  </div>
+</section>
 
-  <aside class="panel">
-    <div class="panel-head"><h2>Active campaigns</h2><span class="badge info">{{ links|length }}</span></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Slug</th><th>Actions</th></tr></thead>
-        <tbody>
-          {% for link in links[:8] %}
-          <tr>
-            <td class="mono">{{ link.slug }}</td>
-            <td>
-              <a class="badge info" href="{{ url_for('dashboard.dashboard_stats.stats', slug=link.slug) }}">Stats</a>
-              <a class="badge" href="{{ url_for('dashboard.dashboard_links.edit_link', slug=link.slug) }}">Edit</a>
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="2" class="muted" style="text-align:center;padding:24px">No links yet</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </aside>
-
-  <aside class="panel">
-    <div class="panel-head"><h2>Priority queue</h2><span class="badge {% if priority_visits %}danger{% else %}success{% endif %}">{{ priority_visits|length }}</span></div>
-    <div class="queue">
-      {% for visit in priority_visits %}
-      <a class="queue-item" href="{{ url_for('dashboard.dashboard_stats.global_timeline') }}">
-        <div class="queue-top">
-          <div class="queue-title">{{ visit.ip_address or 'Unknown IP' }} · {{ visit.country or '?' }}</div>
-          <span class="badge {% if visit.risk_score and visit.risk_score >= 80 %}danger{% else %}warn{% endif %}">{{ visit.risk_score or '?' }}</span>
-        </div>
-        <div class="queue-meta mono">{{ visit.link.slug if visit.link else '-' }} · {{ visit.timestamp.strftime('%H:%M') if visit.timestamp else '' }}</div>
-      </a>
-      {% else %}
-      <div class="queue-item"><div class="queue-meta" style="text-align:center">No urgent items</div></div>
-      {% endfor %}
-    </div>
-  </aside>
+<section class="grid metrics home-metrics">
+  <article class="panel metric compact"><div class="label">Visite</div><div class="value">{{ total_visits }}</div><div class="delta">tutte le campagne</div></article>
+  <article class="panel metric compact"><div class="label">Identità</div><div class="value">{{ identified_visitors }}</div><div class="delta">email distinte</div></article>
+  <article class="panel metric compact"><div class="label">Rischio alto</div><div class="value">{{ high_risk_visits }}</div><div class="delta">da verificare</div></article>
+  <article class="panel metric compact"><div class="label">Review</div><div class="value">{{ reviewed_visits }}</div><div class="delta">etichette applicate</div></article>
 </section>
 {% endblock %}

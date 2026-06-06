@@ -12,12 +12,31 @@ import requests
 from sqlalchemy import func, or_
 
 from .extensions import db, log_queue
-from .models import Link, Visit
+from .models import Link, Visit, Workspace
 
 
 STOP_SENTINEL = {"type": "__stop__"}
 _worker_started = False
 _worker_lock = threading.Lock()
+
+
+def _workspace_integrations(app, workspace_id: str | None) -> dict:
+    workspace = db.session.get(Workspace, workspace_id) if workspace_id else None
+    try:
+        settings = json.loads(workspace.settings_json or "{}") if workspace else {}
+    except (TypeError, ValueError):
+        settings = {}
+    if settings.get("notifications_enabled"):
+        return settings
+    if Workspace.query.count() <= 1:
+        return {
+            "notifications_enabled": True,
+            "webhook_url": app.config.get("WEBHOOK_URL", ""),
+            "webhook_secret": app.config.get("WEBHOOK_SECRET", ""),
+            "telegram_bot_token": app.config.get("TELEGRAM_BOT_TOKEN", ""),
+            "telegram_chat_id": app.config.get("TELEGRAM_CHAT_ID", ""),
+        }
+    return {}
 
 
 def _telegram_escape(value: str) -> str:
@@ -132,8 +151,9 @@ def _send_telegram_text(bot_token: str, chat_id: str, text: str) -> None:
 
 
 def _dispatch_telegram(app, visit: Visit) -> None:
-    bot_token = app.config.get("TELEGRAM_BOT_TOKEN", "")
-    chat_id = app.config.get("TELEGRAM_CHAT_ID", "")
+    settings = _workspace_integrations(app, visit.workspace_id)
+    bot_token = settings.get("telegram_bot_token", "")
+    chat_id = settings.get("telegram_chat_id", "")
     if bot_token and chat_id:
         payload = _build_visit_payload(visit)
         threading.Thread(target=_fire_telegram, args=(bot_token, chat_id, payload), daemon=True).start()
@@ -155,8 +175,9 @@ def _dispatch_notifications_once(app, visit: Visit) -> None:
     visit.notification_sent_at = sent_at
 
     visit_payload = _build_visit_payload(visit)
-    webhook_url = app.config.get("WEBHOOK_URL", "")
-    webhook_secret = app.config.get("WEBHOOK_SECRET", "")
+    settings = _workspace_integrations(app, visit.workspace_id)
+    webhook_url = settings.get("webhook_url", "")
+    webhook_secret = settings.get("webhook_secret", "")
     if webhook_url:
         threading.Thread(
             target=_fire_webhook,
@@ -187,13 +208,22 @@ def _upsert_lead(app, visit: Visit) -> None:
         def _lead_by_canvas(canvas_hash):
             if not canvas_hash:
                 return None
-            lead_match = Lead.query.filter(Lead.all_canvas_hashes.contains(f'"{canvas_hash}"')).first()
+            lead_match = Lead.query.filter(
+                Lead.workspace_id == visit.workspace_id,
+                Lead.all_canvas_hashes.contains(f'"{canvas_hash}"'),
+            ).first()
             if lead_match:
                 return lead_match
-            return Lead.query.filter_by(primary_canvas_hash=canvas_hash).first()
+            return Lead.query.filter_by(
+                workspace_id=visit.workspace_id,
+                primary_canvas_hash=canvas_hash,
+            ).first()
 
         if visit.email:
-            lead = Lead.query.filter_by(email=visit.email).first()
+            lead = Lead.query.filter_by(
+                workspace_id=visit.workspace_id,
+                email=visit.email,
+            ).first()
         if not lead:
             lead = _lead_by_canvas(visit.canvas_hash)
         if not lead and (visit.visitor_id or visit.thumbmark_visitor_id):
@@ -203,7 +233,10 @@ def _upsert_lead(app, visit: Visit) -> None:
             if visit.thumbmark_visitor_id:
                 identity_filters.append(Visit.thumbmark_visitor_id == visit.thumbmark_visitor_id)
             related_visits = (
-                Visit.query.filter(Visit.id != visit.id)
+                Visit.query.filter(
+                    Visit.workspace_id == visit.workspace_id,
+                    Visit.id != visit.id,
+                )
                 .filter(or_(*identity_filters))
                 .order_by(Visit.timestamp.desc())
                 .limit(25)
@@ -211,7 +244,10 @@ def _upsert_lead(app, visit: Visit) -> None:
             )
             for related in related_visits:
                 if related.email:
-                    lead = Lead.query.filter_by(email=related.email).first()
+                    lead = Lead.query.filter_by(
+                        workspace_id=visit.workspace_id,
+                        email=related.email,
+                    ).first()
                 if not lead:
                     lead = _lead_by_canvas(related.canvas_hash)
                 if lead:
@@ -250,6 +286,7 @@ def _upsert_lead(app, visit: Visit) -> None:
             lead.is_vpn = lead.is_vpn or visit.is_vpn
         elif visit.email or visit.canvas_hash:
             lead = Lead(
+                workspace_id=visit.workspace_id,
                 email=visit.email,
                 primary_canvas_hash=visit.canvas_hash,
                 primary_ip=visit.ip_address,
@@ -291,12 +328,16 @@ def _cleanup_visits(app):
         time.sleep(6 * 3600)
 
 
-def _resolve_digest_timezone(app) -> ZoneInfo:
+def _resolve_digest_timezone(app, workspace_id: str | None = None) -> ZoneInfo:
     try:
         with app.app_context():
             timezone_name = (
                 db.session.query(Visit.timezone)
-                .filter(Visit.timezone.isnot(None), Visit.timezone != "")
+                .filter(
+                    Visit.workspace_id == workspace_id if workspace_id else db.true(),
+                    Visit.timezone.isnot(None),
+                    Visit.timezone != "",
+                )
                 .order_by(Visit.timestamp.desc())
                 .limit(1)
                 .scalar()
@@ -310,87 +351,47 @@ def _resolve_digest_timezone(app) -> ZoneInfo:
 
 def _send_daily_digest(app) -> None:
     with app.app_context():
-        bot_token = app.config.get("TELEGRAM_BOT_TOKEN", "")
-        chat_id = app.config.get("TELEGRAM_CHAT_ID", "")
-        if not bot_token or not chat_id:
-            return
-
         cutoff = datetime.utcnow() - timedelta(hours=24)
-        total_visits = Visit.query.filter(Visit.timestamp >= cutoff).count()
-        identified = Visit.query.filter(Visit.timestamp >= cutoff, Visit.email.isnot(None)).count()
-        vpn_count = (
-            Visit.query.filter(
-                Visit.timestamp >= cutoff,
+        for workspace in Workspace.query.all():
+            settings = _workspace_integrations(app, workspace.id)
+            bot_token = settings.get("telegram_bot_token", "")
+            chat_id = settings.get("telegram_chat_id", "")
+            if not bot_token or not chat_id:
+                continue
+
+            filters = [Visit.workspace_id == workspace.id, Visit.timestamp >= cutoff]
+            total_visits = Visit.query.filter(*filters).count()
+            identified = Visit.query.filter(*filters, Visit.email.isnot(None)).count()
+            vpn_count = Visit.query.filter(
+                *filters,
                 db.or_(Visit.is_vpn.is_(True), Visit.is_proxy.is_(True)),
             ).count()
-        )
-
-        first_visit_subquery = (
-            db.session.query(Visit.link_id, func.min(Visit.timestamp).label("first_seen"))
-            .group_by(Visit.link_id)
-            .subquery()
-        )
-        new_links_clicked = (
-            db.session.query(func.count())
-            .select_from(first_visit_subquery)
-            .filter(first_visit_subquery.c.first_seen >= cutoff)
-            .scalar()
-            or 0
-        )
-
-        top_link = (
-            db.session.query(Link.slug, func.count(Visit.id).label("visit_count"))
-            .join(Visit, Visit.link_id == Link.id)
-            .filter(Visit.timestamp >= cutoff)
-            .group_by(Link.slug)
-            .order_by(func.count(Visit.id).desc())
-            .first()
-        )
-        top_country = (
-            db.session.query(Visit.country, func.count(Visit.id).label("visit_count"))
-            .filter(Visit.timestamp >= cutoff)
-            .group_by(Visit.country)
-            .order_by(func.count(Visit.id).desc())
-            .first()
-        )
-
-        stats_dict = {
-            "total_visits": total_visits,
-            "new_links_clicked": new_links_clicked,
-            "identified": identified,
-            "vpn_count": vpn_count,
-            "top_link": top_link[0] if top_link else None,
-            "top_link_visits": top_link[1] if top_link else 0,
-            "top_country": top_country[0] if top_country else None,
-        }
-
-        summary = ""
-        if app.config.get("GEMINI_API_KEY"):
-            try:
-                from .services.ai_service import AIService
-
-                prompt = (
-                    "In max 2 righe, riassumi questi dati di tracking delle ultime 24 ore "
-                    f"in italiano, tono professionale: {stats_dict}"
-                )
-                summary = (AIService.generate(prompt, model=app.config.get("GEMINI_MODEL")) or "").strip()
-            except Exception as exc:
-                print(f"Daily digest AI error: {exc}")
-
-        tz = _resolve_digest_timezone(app)
-        today_label = datetime.now(tz).strftime("%Y-%m-%d")
-        message = (
-            f"📊 *Daily Digest - {_telegram_escape(today_label)}*\n\n"
-            f"👆 {_telegram_escape(str(total_visits))} visite · 📧 {_telegram_escape(str(identified))} email\n"
-            f"🆕 Link nuovi cliccati: {_telegram_escape(str(new_links_clicked))}\n"
-            f"🔗 Link top: /{_telegram_escape(top_link[0] if top_link else '?')} "
-            f"({_telegram_escape(str(top_link[1] if top_link else 0))} visite)\n"
-            f"🌍 Paese top: {_telegram_escape((top_country[0] or '?') if top_country else '?')}\n"
-            f"⚠️ VPN: {_telegram_escape(str(vpn_count))}"
-        )
-        if summary:
-            message += f"\n\n{_telegram_escape(summary)}"
-        _send_telegram_text(bot_token, chat_id, message)
+            top_link = (
+                db.session.query(Link.slug, func.count(Visit.id).label("visit_count"))
+                .join(Visit, Visit.link_id == Link.id)
+                .filter(*filters)
+                .group_by(Link.slug)
+                .order_by(func.count(Visit.id).desc())
+                .first()
+            )
+            top_country = (
+                db.session.query(Visit.country, func.count(Visit.id).label("visit_count"))
+                .filter(*filters)
+                .group_by(Visit.country)
+                .order_by(func.count(Visit.id).desc())
+                .first()
+            )
+            tz = _resolve_digest_timezone(app, workspace.id)
+            today_label = datetime.now(tz).strftime("%Y-%m-%d")
+            message = (
+                f"📊 *{_telegram_escape(workspace.name)} · Daily Digest - {_telegram_escape(today_label)}*\n\n"
+                f"👆 {_telegram_escape(str(total_visits))} visite · 📧 {_telegram_escape(str(identified))} email\n"
+                f"🔗 Link top: /{_telegram_escape(top_link[0] if top_link else '?')} "
+                f"({_telegram_escape(str(top_link[1] if top_link else 0))} visite)\n"
+                f"🌍 Paese top: {_telegram_escape((top_country[0] or '?') if top_country else '?')}\n"
+                f"⚠️ VPN: {_telegram_escape(str(vpn_count))}"
+            )
+            _send_telegram_text(bot_token, chat_id, message)
 
 
 def _daily_digest_loop(app) -> None:
@@ -419,12 +420,6 @@ def _followup_loop(app) -> None:
     while True:
         try:
             with app.app_context():
-                bot_token = app.config.get("TELEGRAM_BOT_TOKEN", "")
-                chat_id = app.config.get("TELEGRAM_CHAT_ID", "")
-                if not bot_token or not chat_id:
-                    time.sleep(3600)
-                    continue
-
                 followup_hours = int(app.config.get("SMART_FOLLOWUP_HOURS", 48) or 48)
                 cutoff = datetime.utcnow() - timedelta(hours=followup_hours)
                 links = (
@@ -437,7 +432,15 @@ def _followup_loop(app) -> None:
                 )
 
                 for link in links:
-                    visits = Visit.query.filter_by(link_id=link.id).order_by(Visit.timestamp.asc()).all()
+                    settings = _workspace_integrations(app, link.workspace_id)
+                    bot_token = settings.get("telegram_bot_token", "")
+                    chat_id = settings.get("telegram_chat_id", "")
+                    if not bot_token or not chat_id:
+                        continue
+                    visits = Visit.query.filter_by(
+                        link_id=link.id,
+                        workspace_id=link.workspace_id,
+                    ).order_by(Visit.timestamp.asc()).all()
                     if not visits:
                         age_hours = int((datetime.utcnow() - link.created_at).total_seconds() // 3600)
                         text = (
@@ -505,7 +508,11 @@ def _handle_task(app, task):
 
                 if not visit.email and visit.canvas_hash:
                     match = (
-                        Visit.query.filter(Visit.canvas_hash == visit.canvas_hash, Visit.email.isnot(None))
+                        Visit.query.filter(
+                            Visit.workspace_id == visit.workspace_id,
+                            Visit.canvas_hash == visit.canvas_hash,
+                            Visit.email.isnot(None),
+                        )
                         .order_by(Visit.timestamp.desc())
                         .first()
                     )

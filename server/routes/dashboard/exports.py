@@ -28,8 +28,10 @@ def _html_safe(value) -> str:
 @workspace_required("analyst")
 @limiter.limit("5 per minute")
 def export_json(slug):
-    link = Link.query.filter_by(slug=slug).first_or_404()
-    visits = Visit.query.filter_by(link_id=link.id).order_by(Visit.timestamp.desc()).all()
+    link = Link.query.filter_by(slug=slug, workspace_id=g.workspace.id).first_or_404()
+    visits = Visit.query.filter_by(
+        link_id=link.id, workspace_id=g.workspace.id
+    ).order_by(Visit.timestamp.desc()).all()
     payload = {
         "link": {
             "slug": link.slug,
@@ -49,8 +51,10 @@ def export_json(slug):
 @workspace_required("analyst")
 @limiter.limit("5 per minute")
 def export_csv(slug):
-    link = Link.query.filter_by(slug=slug).first_or_404()
-    visits = Visit.query.filter_by(link_id=link.id).order_by(Visit.timestamp.desc()).all()
+    link = Link.query.filter_by(slug=slug, workspace_id=g.workspace.id).first_or_404()
+    visits = Visit.query.filter_by(
+        link_id=link.id, workspace_id=g.workspace.id
+    ).order_by(Visit.timestamp.desc()).all()
 
     buffer = StringIO()
     writer = csv.writer(buffer)
@@ -107,8 +111,10 @@ def export_csv(slug):
 @workspace_required("analyst")
 @limiter.limit("5 per minute")
 def export_pdf(slug):
-    link = Link.query.filter_by(slug=slug).first_or_404()
-    visits = Visit.query.filter_by(link_id=link.id).order_by(Visit.timestamp.desc()).limit(100).all()
+    link = Link.query.filter_by(slug=slug, workspace_id=g.workspace.id).first_or_404()
+    visits = Visit.query.filter_by(
+        link_id=link.id, workspace_id=g.workspace.id
+    ).order_by(Visit.timestamp.desc()).limit(100).all()
 
     html = [
         "<!DOCTYPE html><html><head><meta charset='utf-8'><title>UrlTrack Report</title>",
@@ -116,7 +122,7 @@ def export_pdf(slug):
         "</head><body>",
         f"<h1>UrlTrack Report for /{_html_safe(link.slug)}</h1>",
         f"<p><strong>Destination:</strong> {_html_safe(link.destination)}</p>",
-        f"<p><strong>Total visits:</strong> {Visit.query.filter_by(link_id=link.id).count()}</p>",
+        f"<p><strong>Total visits:</strong> {Visit.query.filter_by(link_id=link.id, workspace_id=g.workspace.id).count()}</p>",
         "<table><thead><tr><th>Time</th><th>IP</th><th>Location</th><th>Device</th><th>Email</th></tr></thead><tbody>",
     ]
 

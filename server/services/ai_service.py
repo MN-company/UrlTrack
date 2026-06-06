@@ -42,21 +42,26 @@ class AIService:
         )
 
     @classmethod
-    def build_context(cls, message: str) -> tuple[str, str]:
+    def build_context(cls, message: str, workspace_id: str) -> tuple[str, str]:
         clean_message = cls._strip_disabled_commands(message)
         sections: list[str] = []
 
         email_match = re.search(r"@email:(\S+)", clean_message)
         if email_match:
             email = email_match.group(1)
-            visits = Visit.query.filter_by(email=email).order_by(Visit.timestamp.desc()).limit(50).all()
+            visits = Visit.query.filter_by(
+                email=email, workspace_id=workspace_id
+            ).order_by(Visit.timestamp.desc()).limit(50).all()
             sections.append(cls._summarize_visits(visits, f"EMAIL CONTEXT: {email}"))
 
         hash_match = re.search(r"@hash:(\S+)", clean_message)
         if hash_match:
             value = hash_match.group(1)
             visits = (
-                Visit.query.filter(db.or_(Visit.canvas_hash == value, Visit.etag == value))
+                Visit.query.filter(
+                    Visit.workspace_id == workspace_id,
+                    db.or_(Visit.canvas_hash == value, Visit.etag == value),
+                )
                 .order_by(Visit.timestamp.desc())
                 .limit(50)
                 .all()
@@ -65,7 +70,9 @@ class AIService:
 
         visit_match = re.search(r"@visit:(\d+)", clean_message)
         if visit_match:
-            visit = db.session.get(Visit, int(visit_match.group(1)))
+            visit = Visit.query.filter_by(
+                id=int(visit_match.group(1)), workspace_id=workspace_id
+            ).first()
             if visit:
                 sections.append(
                     "\n=== VISIT CONTEXT ===\n"
@@ -86,28 +93,34 @@ class AIService:
         link_match = re.search(r"@link:([A-Za-z0-9_-]+)", clean_message)
         if link_match:
             slug = link_match.group(1)
-            link = Link.query.filter_by(slug=slug).first()
+            link = Link.query.filter_by(slug=slug, workspace_id=workspace_id).first()
             if link:
-                visits = Visit.query.filter_by(link_id=link.id).order_by(Visit.timestamp.desc()).limit(50).all()
+                visits = Visit.query.filter_by(
+                    link_id=link.id, workspace_id=workspace_id
+                ).order_by(Visit.timestamp.desc()).limit(50).all()
                 sections.append(
                     "\n=== LINK CONTEXT ===\n"
                     f"Slug: /{link.slug}\n"
                     f"Destination: {link.destination}\n"
                     f"Require Email: {link.require_email}\n"
                     f"Captcha Enabled: {link.enable_captcha}\n"
-                    f"Total Visits: {Visit.query.filter_by(link_id=link.id).count()}\n"
+                    f"Total Visits: {Visit.query.filter_by(link_id=link.id, workspace_id=workspace_id).count()}\n"
                     f"{cls._summarize_visits(visits, f'LINK VISITS: /{link.slug}')}"
                 )
 
         ip_match = re.search(r"@ip:([0-9a-fA-F:\.]+)", clean_message)
         if ip_match:
             ip_address = ip_match.group(1)
-            visits = Visit.query.filter_by(ip_address=ip_address).order_by(Visit.timestamp.desc()).limit(50).all()
+            visits = Visit.query.filter_by(
+                ip_address=ip_address, workspace_id=workspace_id
+            ).order_by(Visit.timestamp.desc()).limit(50).all()
             sections.append(cls._summarize_visits(visits, f"IP CONTEXT: {ip_address}"))
 
         lead_match = re.search(r"@lead:(\d+)", clean_message)
         if lead_match:
-            lead = db.session.get(Lead, int(lead_match.group(1)))
+            lead = Lead.query.filter_by(
+                id=int(lead_match.group(1)), workspace_id=workspace_id
+            ).first()
             if lead:
                 filters = []
                 if lead.email:
@@ -116,7 +129,10 @@ class AIService:
                 if canvas_hashes:
                     filters.append(Visit.canvas_hash.in_(canvas_hashes))
                 visits = (
-                    Visit.query.filter(db.or_(*filters)).order_by(Visit.timestamp.desc()).limit(50).all()
+                    Visit.query.filter(
+                        Visit.workspace_id == workspace_id,
+                        db.or_(*filters),
+                    ).order_by(Visit.timestamp.desc()).limit(50).all()
                     if filters else []
                 )
                 avg_identity = cls._avg_int([visit.identity_confidence for visit in visits])
@@ -217,15 +233,18 @@ class AIService:
                 yield text
 
     @staticmethod
-    def _system_prompt() -> str:
-        total_visits = Visit.query.count()
-        total_links = Link.query.count()
-        identified_visits = Visit.query.filter(Visit.email.isnot(None)).count()
-        high_risk_visits = Visit.query.filter(Visit.risk_score >= 50).count()
-        unreviewed_high_risk = Visit.query.filter(Visit.risk_score >= 50, Visit.review_label.is_(None)).count()
-        reviewed_visits = Visit.query.filter(Visit.review_label.isnot(None)).count()
+    def _system_prompt(workspace_id: str) -> str:
+        visits = Visit.query.filter_by(workspace_id=workspace_id)
+        total_visits = visits.count()
+        total_links = Link.query.filter_by(workspace_id=workspace_id).count()
+        identified_visits = visits.filter(Visit.email.isnot(None)).count()
+        high_risk_visits = visits.filter(Visit.risk_score >= 50).count()
+        unreviewed_high_risk = visits.filter(
+            Visit.risk_score >= 50, Visit.review_label.is_(None)
+        ).count()
+        reviewed_visits = visits.filter(Visit.review_label.isnot(None)).count()
 
-        recent_visits = Visit.query.order_by(Visit.timestamp.desc()).limit(5).all()
+        recent_visits = visits.order_by(Visit.timestamp.desc()).limit(5).all()
         recent_text = "\n".join(
             f"- {visit.timestamp:%Y-%m-%d %H:%M} | /{visit.link.slug if visit.link else 'unknown'} | {visit.ip_address} | {visit.country or 'Unknown'}"
             for visit in reversed(recent_visits)
@@ -233,6 +252,7 @@ class AIService:
 
         top_countries = (
             db.session.query(Visit.country, func.count(Visit.id))
+            .filter(Visit.workspace_id == workspace_id)
             .group_by(Visit.country)
             .order_by(func.count(Visit.id).desc())
             .limit(5)
@@ -240,6 +260,7 @@ class AIService:
         )
         top_devices = (
             db.session.query(Visit.device_type, func.count(Visit.id))
+            .filter(Visit.workspace_id == workspace_id)
             .group_by(Visit.device_type)
             .order_by(func.count(Visit.id).desc())
             .limit(5)
@@ -267,9 +288,9 @@ class AIService:
         )
 
     @classmethod
-    def generate_response(cls, message: str) -> dict:
-        clean_message, context = cls.build_context(message)
-        prompt = f"{cls._system_prompt()}\n{context}\nUser Question: {clean_message}"
+    def generate_response(cls, message: str, workspace_id: str) -> dict:
+        clean_message, context = cls.build_context(message, workspace_id)
+        prompt = f"{cls._system_prompt(workspace_id)}\n{context}\nUser Question: {clean_message}"
         response = cls.generate(prompt)
         return {
             "response": response,
@@ -278,7 +299,7 @@ class AIService:
         }
 
     @classmethod
-    def generate_stream_response(cls, message: str) -> Iterable[str]:
-        clean_message, context = cls.build_context(message)
-        prompt = f"{cls._system_prompt()}\n{context}\nUser Question: {clean_message}"
+    def generate_stream_response(cls, message: str, workspace_id: str) -> Iterable[str]:
+        clean_message, context = cls.build_context(message, workspace_id)
+        prompt = f"{cls._system_prompt(workspace_id)}\n{context}\nUser Question: {clean_message}"
         return cls.generate_stream(prompt)

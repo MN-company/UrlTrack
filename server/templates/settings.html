@@ -36,29 +36,20 @@
   </div>
 
   <div class="panel pad">
-    <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Runtime configuration</h2><span class="badge warn">Integrations</span></div>
+    <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Integrazioni workspace</h2><span class="badge success">Isolate</span></div>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="settings_scope" value="runtime">
       <div class="form-grid" style="grid-template-columns:1fr">
-        <div class="field"><label>SERVER_URL</label><input class="input" name="server_url" value="{{ server_url }}"></div>
-        <div class="field"><label>GEMINI_API_KEY</label><input class="input" type="password" name="gemini_api_key" placeholder="leave empty to keep current"></div>
-        <div class="field"><label>GEMINI_MODEL</label><input class="input" name="gemini_model" value="{{ gemini_model }}"></div>
         <div class="field"><label>WEBHOOK_URL</label><input class="input" name="webhook_url" value="{{ webhook_url or '' }}"></div>
         <div class="field"><label>WEBHOOK_SECRET</label><input class="input" type="password" name="webhook_secret" placeholder="leave blank to keep current"></div>
         <div class="field"><label>TELEGRAM_BOT_TOKEN</label><input class="input" type="password" name="telegram_bot_token" placeholder="leave blank to keep current"></div>
         <div class="field"><label>TELEGRAM_CHAT_ID</label><input class="input" name="telegram_chat_id" value="{{ telegram_chat_id }}"></div>
-        <div class="field"><label>VISIT_RETENTION_DAYS</label><input class="input" type="number" name="visit_retention_days" min="1" max="3650" value="{{ visit_retention_days }}"></div>
       </div>
-      <div class="toggle-list" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px">
-        <label class="toggle {% if mask_with_isgd %}enabled{% endif %}" data-toggle-target="mask_with_isgd_cb">
-          <div><h3>Mask with is.gd</h3><p>Shorten public links externally.</p></div>
-          <input type="checkbox" id="mask_with_isgd_cb" name="mask_with_isgd" {% if mask_with_isgd %}checked{% endif %} style="display:none">
-          <span class="switch"></span>
-        </label>
-        <label class="toggle {% if trust_proxy_headers %}enabled{% endif %}" data-toggle-target="trust_proxy_headers_cb">
-          <div><h3>Trust proxy headers</h3><p>Read X-Forwarded-For for real IPs.</p></div>
-          <input type="checkbox" id="trust_proxy_headers_cb" name="trust_proxy_headers" {% if trust_proxy_headers %}checked{% endif %} style="display:none">
+      <div class="toggle-list" style="grid-template-columns:1fr;margin-top:14px">
+        <label class="toggle {% if notifications_enabled %}enabled{% endif %}" data-toggle-target="notifications_enabled_cb">
+          <div><h3>Notifiche attive</h3><p>Invia webhook e Telegram solo per questo workspace.</p></div>
+          <input type="checkbox" id="notifications_enabled_cb" name="notifications_enabled" {% if notifications_enabled %}checked{% endif %} style="display:none">
           <span class="switch"></span>
         </label>
       </div>
@@ -66,6 +57,17 @@
         <button type="submit" class="btn primary">Save configuration</button>
       </div>
     </form>
+  </div>
+</section>
+
+<section class="panel pad" style="margin-top:14px">
+  <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Configurazione server</h2><span class="badge">Solo .env</span></div>
+  <p class="muted">Questi valori sono gestiti dall'operatore del server e non sono modificabili da un tenant.</p>
+  <div class="form-grid">
+    <div class="rule-row"><span>SERVER_URL</span><span class="mono">{{ server_url }}</span></div>
+    <div class="rule-row"><span>GEMINI_MODEL</span><span class="mono">{{ gemini_model }}</span></div>
+    <div class="rule-row"><span>VISIT_RETENTION_DAYS</span><span class="mono">{{ visit_retention_days }}</span></div>
+    <div class="rule-row"><span>TRUST_PROXY_HEADERS</span><span class="mono">{{ trust_proxy_headers }}</span></div>
   </div>
 </section>
 {% endblock %}

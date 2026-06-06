@@ -5,7 +5,7 @@
 <header class="topbar">
   <div>
     <p class="eyebrow">{{ current_workspace.name if current_workspace else 'UrlTrack' }} / New link</p>
-    <h1>Build the protected link.</h1>
+    <h1>Prepara il link, genera il QR, poi passa alla logica avanzata.</h1>
   </div>
   <div class="actions">
     <a class="btn" href="{{ url_for('dashboard.dashboard_links.links') }}">All links</a>
@@ -40,7 +40,7 @@
         </div>
         <div class="field">
           <label>Destination URL</label>
-          <input class="input" name="destination" required placeholder="https://your-target.com/page">
+          <input class="input" name="destination" value="{{ request.args.get('destination', '') }}" required placeholder="https://your-target.com/page">
         </div>
         <div class="field">
           <label>Safe URL <span class="muted">(shown to suspicious visitors)</span></label>

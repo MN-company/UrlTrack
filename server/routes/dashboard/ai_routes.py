@@ -1,6 +1,6 @@
 import json
 
-from flask import Blueprint, Response, jsonify, redirect, render_template, request, stream_with_context, url_for
+from flask import Blueprint, Response, g, jsonify, redirect, render_template, request, stream_with_context, url_for
 
 from ...auth_middleware import workspace_required
 
@@ -22,16 +22,20 @@ def _extract_message():
 @bp.route("/ai/console")
 @workspace_required("analyst")
 def ai_console():
+    visits = Visit.query.filter_by(workspace_id=g.workspace.id)
+    links = Link.query.filter_by(workspace_id=g.workspace.id)
     return render_template(
         "ai_console.html",
         model_name=Config.GEMINI_MODEL,
-        total_visits=Visit.query.count(),
-        total_links=Link.query.count(),
-        identified_visits=Visit.query.filter(Visit.email.isnot(None)).count(),
-        high_risk_visits=Visit.query.filter(Visit.risk_score >= 50).count(),
-        unreviewed_high_risk=Visit.query.filter(Visit.risk_score >= 50, Visit.review_label.is_(None)).count(),
-        reviewed_visits=Visit.query.filter(Visit.review_label.isnot(None)).count(),
-        recent_visits=Visit.query.order_by(Visit.timestamp.desc()).limit(8).all(),
+        total_visits=visits.count(),
+        total_links=links.count(),
+        identified_visits=visits.filter(Visit.email.isnot(None)).count(),
+        high_risk_visits=visits.filter(Visit.risk_score >= 50).count(),
+        unreviewed_high_risk=visits.filter(
+            Visit.risk_score >= 50, Visit.review_label.is_(None)
+        ).count(),
+        reviewed_visits=visits.filter(Visit.review_label.isnot(None)).count(),
+        recent_visits=visits.order_by(Visit.timestamp.desc()).limit(8).all(),
         initial_message=(request.args.get("message") or "").strip(),
     )
 
@@ -43,7 +47,7 @@ def ai_console_send():
     if not message:
         return jsonify({"error": "No message provided."}), 400
     try:
-        return jsonify(AIService.generate_response(message))
+        return jsonify(AIService.generate_response(message, g.workspace.id))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
@@ -60,7 +64,7 @@ def ai_console_stream():
     def generate():
         yield f"data: {json.dumps({'type': 'meta', 'model': Config.GEMINI_MODEL})}\n\n"
         try:
-            for chunk in AIService.generate_stream_response(message):
+            for chunk in AIService.generate_stream_response(message, g.workspace.id):
                 yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:

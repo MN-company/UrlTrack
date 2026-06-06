@@ -1,83 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UrlTrack Login</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            margin: 0;
-            min-height: 100vh;
-            font-family: Inter, sans-serif;
-            background: linear-gradient(135deg, #0b1220 0%, #101a2f 55%, #172036 100%);
-            color: #e5edf7;
-            display: grid;
-            place-items: center;
-        }
-        .card {
-            width: min(420px, calc(100vw - 2rem));
-            padding: 2rem;
-            border-radius: 20px;
-            background: rgba(11, 18, 32, 0.88);
-            border: 1px solid rgba(148, 163, 184, 0.18);
-            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
-        }
-        h1 { margin: 0 0 0.5rem; font-size: 1.75rem; }
-        p { color: #9fb0c8; line-height: 1.5; }
-        label { display: block; margin-bottom: 0.4rem; font-size: 0.9rem; color: #b9c7db; }
-        input {
-            width: 100%;
-            box-sizing: border-box;
-            padding: 0.85rem 0.95rem;
-            border-radius: 12px;
-            border: 1px solid rgba(148, 163, 184, 0.18);
-            background: rgba(15, 23, 42, 0.9);
-            color: #fff;
-            margin-bottom: 1rem;
-        }
-        button {
-            width: 100%;
-            padding: 0.9rem 1rem;
-            border: 0;
-            border-radius: 12px;
-            background: #3b82f6;
-            color: white;
-            font-weight: 700;
-            cursor: pointer;
-        }
-        .flash {
-            margin-bottom: 1rem;
-            padding: 0.85rem 0.95rem;
-            border-radius: 12px;
-            background: rgba(239, 68, 68, 0.15);
-            color: #fecaca;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UrlTrack — {{ 'Registrazione' if mode == 'register' else 'Login' }}</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <style>
+    :root{color-scheme:dark;--bg:oklch(8% .018 260);--surface:oklch(13.5% .022 260);--surface2:oklch(17% .026 260);--fg:oklch(94% .008 260);--muted:oklch(68% .022 260);--border:oklch(29% .032 260);--accent:oklch(65% .18 45);--green:oklch(66% .16 145)}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;background:radial-gradient(circle at 22% 18%,oklch(65% .18 45/.14),transparent 28%),radial-gradient(circle at 78% 82%,oklch(66% .16 145/.10),transparent 28%),var(--bg)}
+    .auth-card{width:min(430px,100%);padding:32px;border:1px solid var(--border);border-radius:14px;background:oklch(13.5% .022 260/.88);backdrop-filter:blur(18px);box-shadow:0 24px 80px oklch(0% 0 0/.35)}
+    .brand{width:44px;height:44px;display:grid;place-items:center;margin-bottom:24px;border-radius:10px;color:var(--bg);background:linear-gradient(135deg,var(--accent),var(--green));font-weight:850;font-size:13px}
+    h1{margin:0;font-size:30px;letter-spacing:-.04em}p{margin:8px 0 24px;color:var(--muted);line-height:1.55;font-size:13px}
+    label{display:block;margin:13px 0 7px;color:var(--muted);font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.08em}
+    input{width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;outline:0;color:var(--fg);background:var(--surface2);font:inherit}input:focus{border-color:var(--accent);box-shadow:0 0 0 3px oklch(65% .18 45/.14)}
+    button,.button{width:100%;min-height:43px;display:grid;place-items:center;margin-top:18px;border:1px solid transparent;border-radius:8px;color:var(--bg);background:var(--accent);font-weight:800;cursor:pointer;text-decoration:none}
+    .button.secondary{margin-top:10px;border-color:var(--border);color:var(--fg);background:transparent}.button.secondary:hover{background:var(--surface2)}
+    .flash{margin-bottom:10px;padding:10px 12px;border:1px solid oklch(63% .19 28/.55);border-radius:8px;background:oklch(63% .19 28/.12);font-size:12px}
+    .foot{margin:20px 0 0;text-align:center}.foot a{color:var(--accent)}
+    .auth-meta{display:flex;justify-content:space-between;gap:10px;margin-top:16px;color:var(--muted);font-size:10px}.status{min-height:18px;margin-top:10px;color:var(--muted);font-size:11px}
+  </style>
 </head>
 <body>
-    <div class="card">
-        <h1>Dashboard Login</h1>
-        <p>Sign in with your admin email and password. If your account has 2FA or a passkey, you’ll verify it in the next step.</p>
+  <main class="auth-card">
+    <div class="brand">UT</div>
+    <h1>{{ 'Crea UrlTrack' if mode == 'register' else 'Bentornato' }}</h1>
+    <p>{% if mode == 'register' %}Crea il primo account owner e configura il workspace.{% else %}Accedi a campagne, identità e intelligence del tuo workspace.{% endif %}</p>
 
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-        {% for message in messages %}
-        <div class="flash">{{ message }}</div>
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
+    {% with messages = get_flashed_messages() %}{% for message in messages %}<div class="flash">{{ message }}</div>{% endfor %}{% endwith %}
 
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="email">Email</label>
-            <input id="email" type="email" name="email" placeholder="admin@example.com" required autofocus>
-            <label for="password">Password</label>
-            <input id="password" type="password" name="password" placeholder="Minimum 12 characters" required>
-            <button type="submit">Continue</button>
-        </form>
-    </div>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="email">Email</label>
+      <input id="email" type="email" name="email" autocomplete="username" required autofocus>
+      <label for="password">Password</label>
+      <input id="password" type="password" name="password" minlength="12" autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" required>
+      <button type="submit">{{ 'Crea account' if mode == 'register' else 'Continua' }}</button>
+    </form>
+
+    {% if mode != 'register' %}
+    <button class="button secondary" id="passkey-login" type="button">Accedi con passkey</button>
+    <div class="status" id="passkey-status"></div>
+    {% endif %}
+
+    <div class="auth-meta"><span>{{ 'Supabase Auth' if supabase_enabled else 'Auth locale' }}</span><span>MFA + Passkey</span></div>
+    <p class="foot">{% if mode == 'register' %}<a href="{{ url_for('auth.login') }}">Hai già un account?</a>{% else %}Gli account aggiuntivi si creano tramite invito.{% endif %}</p>
+  </main>
+
+  {% if mode != 'register' %}
+  <script>
+    function decode(value){var b=value.replace(/-/g,'+').replace(/_/g,'/');var s=atob(b+'='.repeat((4-b.length%4)%4));return Uint8Array.from(s,function(c){return c.charCodeAt(0)}).buffer}
+    function encode(buffer){return btoa(String.fromCharCode.apply(null,new Uint8Array(buffer))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'')}
+    document.getElementById('passkey-login').addEventListener('click',async function(){
+      var email=document.getElementById('email').value.trim(),status=document.getElementById('passkey-status');
+      if(!email){status.textContent='Inserisci prima la tua email.';return}
+      try{
+        var headers={'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name="csrf-token"]').content};
+        var r=await fetch('{{ url_for("auth.passkey_auth_options") }}',{method:'POST',headers:headers,body:JSON.stringify({email:email})});
+        var o=await r.json();if(!r.ok)throw new Error(o.error||'Passkey non disponibile');
+        o.challenge=decode(o.challenge);o.allowCredentials=(o.allowCredentials||[]).map(function(c){c.id=decode(c.id);return c});
+        var c=await navigator.credentials.get({publicKey:o});
+        var payload={id:c.id,rawId:encode(c.rawId),type:c.type,response:{clientDataJSON:encode(c.response.clientDataJSON),authenticatorData:encode(c.response.authenticatorData),signature:encode(c.response.signature),userHandle:c.response.userHandle?encode(c.response.userHandle):null}};
+        var v=await fetch('{{ url_for("auth.passkey_auth_verify") }}',{method:'POST',headers:headers,body:JSON.stringify(payload)});
+        var result=await v.json();if(!v.ok||!result.verified)throw new Error(result.error||'Verifica fallita');
+        location.href=result.redirect;
+      }catch(error){status.textContent=error.message}
+    });
+  </script>
+  {% endif %}
 </body>
 </html>

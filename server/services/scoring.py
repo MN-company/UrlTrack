@@ -121,7 +121,10 @@ def _load_candidates(visit: Visit, composite: str | None) -> list[Visit]:
     if not filters:
         return []
     return (
-        Visit.query.filter(Visit.id != visit.id)
+        Visit.query.filter(
+            Visit.workspace_id == visit.workspace_id,
+            Visit.id != visit.id,
+        )
         .filter(or_(*filters))
         .order_by(Visit.timestamp.desc())
         .limit(100)
@@ -322,6 +325,7 @@ def _update_visitor_rollups(visitor: Visitor, visit: Visit, signals: dict[str, s
 def _update_api_stats(visitor: Visitor) -> None:
     db.session.flush()
     api_visits = Visit.query.filter(
+        Visit.workspace_id == visitor.workspace_id,
         Visit.visitor_id == visitor.id,
         Visit.thumbmark_api_called.is_(True),
     ).all()
@@ -335,9 +339,12 @@ def _update_api_stats(visitor: Visitor) -> None:
 
 
 def _update_visitor_signals(visitor_id: str, visit: Visit, signals: dict[str, str]) -> Visitor:
-    visitor = db.session.get(Visitor, visitor_id)
+    visitor = Visitor.query.filter_by(
+        id=visitor_id,
+        workspace_id=visit.workspace_id,
+    ).first()
     if visitor is None:
-        visitor = Visitor(id=visitor_id)
+        visitor = Visitor(workspace_id=visit.workspace_id)
         db.session.add(visitor)
         db.session.flush()
 
@@ -346,6 +353,7 @@ def _update_visitor_signals(visitor_id: str, visit: Visit, signals: dict[str, st
     for signal_type, signal_value in signals.items():
         weight = SIGNAL_WEIGHTS.get(signal_type, 0)
         existing = VisitorSignal.query.filter_by(
+            workspace_id=visit.workspace_id,
             visitor_id=visitor.id,
             signal_type=signal_type,
             signal_value=signal_value,
@@ -359,6 +367,7 @@ def _update_visitor_signals(visitor_id: str, visit: Visit, signals: dict[str, st
         else:
             db.session.add(
                 VisitorSignal(
+                    workspace_id=visit.workspace_id,
                     visitor_id=visitor.id,
                     visit_id=visit.id,
                     signal_type=signal_type,
@@ -376,7 +385,11 @@ def _update_visitor_signals(visitor_id: str, visit: Visit, signals: dict[str, st
 
 def _create_new_visitor(visit: Visit, signals: dict[str, str]) -> Visitor:
     timestamp = visit.timestamp or datetime.utcnow()
-    visitor = Visitor(first_seen=timestamp, last_seen=timestamp)
+    visitor = Visitor(
+        workspace_id=visit.workspace_id,
+        first_seen=timestamp,
+        last_seen=timestamp,
+    )
     db.session.add(visitor)
     db.session.flush()
     return _update_visitor_signals(visitor.id, visit, signals)
@@ -389,13 +402,22 @@ def _ensure_visitor_for_visit(visit: Visit) -> Visitor:
     return _create_new_visitor(visit, signals)
 
 
-def _candidate_scores(signals: dict[str, str], *, exclude_visitor_id: str | None = None) -> dict[str, int]:
+def _candidate_scores(
+    signals: dict[str, str],
+    workspace_id: str | None,
+    *,
+    exclude_visitor_id: str | None = None,
+) -> dict[str, int]:
     candidates: dict[str, int] = {}
     for signal_type, signal_value in signals.items():
         weight = SIGNAL_WEIGHTS.get(signal_type, 0)
         if not weight:
             continue
-        matches = VisitorSignal.query.filter_by(signal_type=signal_type, signal_value=signal_value).all()
+        matches = VisitorSignal.query.filter_by(
+            workspace_id=workspace_id,
+            signal_type=signal_type,
+            signal_value=signal_value,
+        ).all()
         for match in matches:
             if exclude_visitor_id and match.visitor_id == exclude_visitor_id:
                 continue
@@ -403,10 +425,15 @@ def _candidate_scores(signals: dict[str, str], *, exclude_visitor_id: str | None
     return candidates
 
 
-def _signal_match_reasons(visitor_id: str, signals: dict[str, str]) -> list[str]:
+def _signal_match_reasons(
+    visitor_id: str,
+    workspace_id: str | None,
+    signals: dict[str, str],
+) -> list[str]:
     reasons = []
     for signal_type, signal_value in signals.items():
         if VisitorSignal.query.filter_by(
+            workspace_id=workspace_id,
             visitor_id=visitor_id,
             signal_type=signal_type,
             signal_value=signal_value,
@@ -421,7 +448,11 @@ def match_visitor(visit: Visit, *, allow_reassign: bool = False) -> tuple[str, i
         _update_visitor_signals(visit.visitor_id, visit, signals)
         return visit.visitor_id, visit.identity_confidence or 0, ["existing_visitor"]
 
-    candidates = _candidate_scores(signals, exclude_visitor_id=visit.visitor_id if allow_reassign else None)
+    candidates = _candidate_scores(
+        signals,
+        visit.workspace_id,
+        exclude_visitor_id=visit.visitor_id if allow_reassign else None,
+    )
     if visit.is_vpn or visit.is_proxy or visit.is_hosting:
         for visitor_id in candidates:
             candidates[visitor_id] += PENALTIES["vpn_datacenter"]
@@ -438,7 +469,7 @@ def match_visitor(visit: Visit, *, allow_reassign: bool = False) -> tuple[str, i
 
     best_id = max(candidates, key=candidates.get)
     best_score = max(0, min(100, candidates[best_id]))
-    reasons = _signal_match_reasons(best_id, signals)
+    reasons = _signal_match_reasons(best_id, visit.workspace_id, signals)
 
     if best_score >= MATCH_THRESHOLD:
         visit.probable_visitor_id = None
@@ -528,7 +559,10 @@ def apply_visit_scoring(
             matched_visit_id = candidate.id
 
     if matched_visit_id and "human_marked_false_match" not in best_conflicts:
-        matched_visit = db.session.get(Visit, matched_visit_id)
+        matched_visit = Visit.query.filter_by(
+            id=matched_visit_id,
+            workspace_id=visit.workspace_id,
+        ).first()
         if matched_visit is not None:
             _ensure_visitor_for_visit(matched_visit)
             legacy_visitor_id = matched_visit.visitor_id

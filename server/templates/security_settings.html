@@ -68,19 +68,13 @@
     </form>
   </div>
 
+  {% if current_role in ['owner', 'admin'] %}
   <div class="panel pad">
-    <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Create admin</h2></div>
-    <p class="muted">Requires the server secret code from first-run setup.</p>
-    <form action="{{ url_for('dashboard.dashboard_security.create_admin') }}" method="POST" style="margin-top:12px">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field"><label>Admin email</label><input class="input" name="email" type="email" required></div>
-      <div class="field" style="margin-top:10px"><label>Display name</label><input class="input" name="username" type="text" placeholder="Optional"></div>
-      <div class="field" style="margin-top:10px"><label>Password</label><input class="input" name="password" type="password" minlength="12" required></div>
-      <div class="field" style="margin-top:10px"><label>Confirm password</label><input class="input" name="confirm_password" type="password" minlength="12" required></div>
-      <div class="field" style="margin-top:10px"><label>Server secret code</label><input class="input" name="secret_code" type="password" required></div>
-      <button class="btn primary" style="width:100%;margin-top:12px">Create admin</button>
-    </form>
+    <div class="panel-head" style="padding:0 0 14px;margin-bottom:14px"><h2>Accesso del team</h2><span class="badge success">Workspace</span></div>
+    <p class="muted">Gli account si gestiscono con inviti e ruoli del workspace. Non esistono più admin globali creati con un segreto server.</p>
+    <a class="btn primary" href="{{ url_for('dashboard.team.team_settings') }}">Gestisci membri e ruoli</a>
   </div>
+  {% endif %}
 </section>
 {% endblock %}
 

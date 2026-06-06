@@ -305,18 +305,6 @@ class User(UserMixin, DatabaseModel):
         return _safe_json_loads(self.backup_codes, [])
 
 
-class SetupState(DatabaseModel):
-    id: Mapped[int] = mapped_column(primary_key=True, default=1)
-    setup_completed: Mapped[bool] = mapped_column(Boolean, default=False)
-    admin_secret_hash: Mapped[Optional[str]] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
-
-
 class Workspace(DatabaseModel):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())

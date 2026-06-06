@@ -1,0 +1,2 @@
+-r server/requirements.txt
+pytest==9.0.3

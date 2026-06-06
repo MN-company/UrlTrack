@@ -3,7 +3,6 @@ import json
 import math
 import os
 import random
-import secrets
 import string
 import time
 from functools import lru_cache
@@ -34,11 +33,6 @@ def sanitize(value: str, max_len: int = 2048) -> str:
     if not value:
         return ""
     return str(value).strip()[:max_len]
-
-
-def generate_secret_code(length: int = 24) -> str:
-    alphabet = string.ascii_uppercase + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def generate_slug(length: int = 6) -> str:

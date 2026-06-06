@@ -127,8 +127,12 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_workspace():
-        from .auth_middleware import get_current_user, get_current_workspace
-        from .models import WorkspaceMember
+        from .auth_middleware import (
+            current_user_email,
+            get_current_membership,
+            get_current_user,
+            get_current_workspace,
+        )
         user = get_current_user()
         workspace = None
         role = None
@@ -136,14 +140,12 @@ def create_app() -> Flask:
         if user:
             workspace = get_current_workspace()
             if workspace:
-                member = WorkspaceMember.query.filter_by(
-                    workspace_id=workspace.id,
-                    user_id=user.id,
-                    status="active",
-                ).first()
+                member = get_current_membership(workspace.id)
                 role = member.role if member else None
+            from .models import WorkspaceMember
+
             all_workspaces = WorkspaceMember.query.filter_by(
-                user_id=user.id,
+                user_email=current_user_email(user),
                 status="active",
             ).all()
         return {
@@ -151,6 +153,7 @@ def create_app() -> Flask:
             "current_role": role,
             "all_workspaces": all_workspaces,
             "current_user": user,
+            "current_user_email": current_user_email(user),
         }
 
     from .routes import api, auth, public

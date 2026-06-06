@@ -22,3 +22,11 @@ legacy_backup/
 # IDE
 .idea/
 .vscode/
+
+# Generated frontend / analysis output
+node_modules/
+.next/
+**/.next/
+.turbo/
+*.tsbuildinfo
+graphify-out/

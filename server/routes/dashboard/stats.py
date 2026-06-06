@@ -141,13 +141,17 @@ def global_search():
 
     search_term = f"%{query}%"
     visits = (
-        Visit.query.filter(_visit_search_filter(search_term))
+        Visit.query.filter(
+            Visit.workspace_id == g.workspace.id,
+            _visit_search_filter(search_term),
+        )
         .order_by(Visit.timestamp.desc())
         .limit(100)
         .all()
     )
     links = (
         Link.query.filter(
+            Link.workspace_id == g.workspace.id,
             db.or_(
                 Link.slug.ilike(search_term),
                 Link.destination.ilike(search_term),
@@ -192,13 +196,44 @@ def global_timeline():
     if filters["sort"] not in {"newest", "risk", "identity"}:
         filters["sort"] = "newest"
 
-    visit_query = _apply_visit_filters(Visit.query.options(joinedload(Visit.link)), filters)
+    visit_query = _apply_visit_filters(
+        Visit.query.options(joinedload(Visit.link)).filter(
+            Visit.workspace_id == g.workspace.id
+        ),
+        filters,
+    )
     visits = _visit_sort(visit_query, filters["sort"]).limit(200).all()
-    countries = [value for (value,) in db.session.query(Visit.country).distinct().all() if value]
-    devices = [value for (value,) in db.session.query(Visit.device_type).distinct().all() if value]
-    slugs = [value for (value,) in db.session.query(Link.slug).order_by(Link.slug.asc()).all() if value]
+    countries = [
+        value
+        for (value,) in db.session.query(Visit.country)
+        .filter(Visit.workspace_id == g.workspace.id)
+        .distinct()
+        .all()
+        if value
+    ]
+    devices = [
+        value
+        for (value,) in db.session.query(Visit.device_type)
+        .filter(Visit.workspace_id == g.workspace.id)
+        .distinct()
+        .all()
+        if value
+    ]
+    slugs = [
+        value
+        for (value,) in db.session.query(Link.slug)
+        .filter(Link.workspace_id == g.workspace.id)
+        .order_by(Link.slug.asc())
+        .all()
+        if value
+    ]
     review_labels = [
-        value for (value,) in db.session.query(Visit.review_label).distinct().all() if value
+        value
+        for (value,) in db.session.query(Visit.review_label)
+        .filter(Visit.workspace_id == g.workspace.id)
+        .distinct()
+        .all()
+        if value
     ]
     return render_template(
         "timeline.html",
@@ -218,8 +253,10 @@ def global_timeline():
 @bp.route("/stats/<slug>")
 @workspace_required("analyst")
 def stats(slug: str):
-    link = Link.query.filter_by(slug=slug).first_or_404()
-    visits = Visit.query.filter_by(link_id=link.id).order_by(Visit.timestamp.desc()).all()
+    link = Link.query.filter_by(slug=slug, workspace_id=g.workspace.id).first_or_404()
+    visits = Visit.query.filter_by(
+        link_id=link.id, workspace_id=g.workspace.id
+    ).order_by(Visit.timestamp.desc()).all()
     avg_dwell_ms = (
         db.session.query(func.avg(Visit.dwell_ms))
         .filter(Visit.link_id == link.id, Visit.dwell_ms.isnot(None))
@@ -259,7 +296,11 @@ def stats(slug: str):
     ip_addresses = {visit.ip_address for visit in visits if visit.ip_address}
     cross_link_data = {}
     if ip_addresses:
-        cross_visits = Visit.query.filter(Visit.ip_address.in_(ip_addresses), Visit.link_id != link.id).all()
+        cross_visits = Visit.query.filter(
+            Visit.workspace_id == g.workspace.id,
+            Visit.ip_address.in_(ip_addresses),
+            Visit.link_id != link.id,
+        ).all()
         for cross_visit in cross_visits:
             cross_link_data.setdefault(cross_visit.ip_address, [])
             if cross_visit.link.slug not in [item["slug"] for item in cross_link_data[cross_visit.ip_address]]:
@@ -290,6 +331,7 @@ def stats(slug: str):
 def device_profile(fingerprint: str):
     visits = (
         Visit.query.filter(
+            Visit.workspace_id == g.workspace.id,
             db.or_(
                 Visit.canvas_hash == fingerprint,
                 Visit.etag == fingerprint,
@@ -394,7 +436,11 @@ def cross_tracking():
     query = sanitize(request.args.get("q"), 255)
     column = groups[group_by]["column"]
 
-    base_filters = [column.isnot(None), column != ""]
+    base_filters = [
+        Visit.workspace_id == g.workspace.id,
+        column.isnot(None),
+        column != "",
+    ]
     if days > 0:
         base_filters.append(Visit.timestamp >= datetime.utcnow() - timedelta(days=days))
     if risk_min > 0:
@@ -465,6 +511,64 @@ def cross_tracking():
         risk_min=risk_min,
         identity_min=identity_min,
         q=query,
+    )
+
+
+@bp.route("/global-intel")
+@workspace_required("analyst")
+def global_intel():
+    workspace_id = g.workspace.id
+    base = Visit.query.filter_by(workspace_id=workspace_id)
+    total_visits = base.count()
+    identified = base.filter(Visit.email.isnot(None), Visit.email != "").count()
+    suspicious = base.filter(
+        db.or_(
+            Visit.risk_score >= 50,
+            Visit.cluster_conflict.is_(True),
+            Visit.is_vpn.is_(True),
+            Visit.is_proxy.is_(True),
+        )
+    ).count()
+    countries = (
+        db.session.query(Visit.country, func.count(Visit.id).label("count"))
+        .filter(
+            Visit.workspace_id == workspace_id,
+            Visit.country.isnot(None),
+            Visit.country != "",
+        )
+        .group_by(Visit.country)
+        .order_by(func.count(Visit.id).desc())
+        .limit(8)
+        .all()
+    )
+    organizations = (
+        db.session.query(Visit.org, func.count(Visit.id).label("count"))
+        .filter(
+            Visit.workspace_id == workspace_id,
+            Visit.org.isnot(None),
+            Visit.org != "",
+        )
+        .group_by(Visit.org)
+        .order_by(func.count(Visit.id).desc())
+        .limit(8)
+        .all()
+    )
+    recent_risk = (
+        base.filter(Visit.risk_score >= 40)
+        .options(joinedload(Visit.link))
+        .order_by(Visit.risk_score.desc(), Visit.timestamp.desc())
+        .limit(10)
+        .all()
+    )
+    return render_template(
+        "global_intel.html",
+        total_visits=total_visits,
+        identified=identified,
+        suspicious=suspicious,
+        countries=countries,
+        organizations=organizations,
+        recent_risk=recent_risk,
+        links_count=Link.query.filter_by(workspace_id=workspace_id).count(),
     )
 
 
@@ -568,6 +672,7 @@ def graph():
             joinedload(Visitor.signals),
             joinedload(Visitor.visits),
         )
+        .filter(Visitor.workspace_id == g.workspace.id)
         .order_by(Visitor.last_seen.desc().nullslast(), Visitor.created_at.desc())
         .limit(500)
         .all()

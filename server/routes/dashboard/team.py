@@ -104,7 +104,7 @@ def remove_member(member_id: str):
         flash("Non puoi rimuovere l'owner del workspace.", "error")
         return redirect(url_for("dashboard.team.team_settings"))
 
-    if member.user_id == g.current_user.id:
+    if str(member.user_id or "") == str(g.current_user.id):
         flash("Non puoi rimuovere te stesso.", "error")
         return redirect(url_for("dashboard.team.team_settings"))
 

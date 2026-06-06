@@ -216,13 +216,17 @@ def maybe_enrich_thumbmark_api(visit: Visit, confidence_score: int) -> dict[str,
         return None
 
     if visit.visitor_id:
-        visitor = db.session.get(Visitor, visit.visitor_id)
+        visitor = Visitor.query.filter_by(
+            id=visit.visitor_id,
+            workspace_id=visit.workspace_id,
+        ).first()
         if visitor and visitor.thumbmark_api_confidence_avg and visitor.thumbmark_api_confidence_avg > 0.85:
             return None
 
     cutoff = datetime.utcnow() - timedelta(days=7)
     recent = (
         Visit.query.filter(
+            Visit.workspace_id == visit.workspace_id,
             Visit.id != visit.id,
             Visit.thumbmark_hash == visit.thumbmark_hash,
             Visit.thumbmark_api_called.is_(True),
