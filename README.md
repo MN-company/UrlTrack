@@ -1,62 +1,94 @@
 # UrlTrack
 
-UrlTrack is a self-hosted link tracking platform built with Flask. It sits between a public link and its destination, giving you full control over who can access it and deep visibility into what happens after the click.
+**Turn every link into a fast, protected intelligence layer.**
 
-Unlike traditional link shorteners, UrlTrack focuses on context: it helps you understand who is interacting with your links, how, and why.
+UrlTrack is a self-hosted link intelligence platform built for teams that want
+more control than a traditional shortener can offer. Create protected links,
+route trusted visitors, filter unwanted traffic, connect identities across
+campaigns, and turn every interaction into useful operational context.
 
-It is designed for controlled campaigns, demos, internal investigations, and analytical use cases where standard shorteners and basic trackers fall short.
+Everything runs on infrastructure you control, with no artificial limits on
+campaigns and no dependency on a third-party analytics dashboard.
 
-## What UrlTrack does
+**[Open the interactive website](https://mn-company.github.io/UrlTrack/)**
 
-At its core, UrlTrack sits between a public link and its destination.
+## Highlights
 
-A key design choice is the built-in anti-bot and anti-crawler system on both the domain and generated links. This makes the platform resistant to URL expanders and similar automated tools: UrlTrack can return a valid HTTP 200 response without ever exposing or resolving the real destination URL, effectively feeding false or empty information to automated systems.
+- **GhostRedirect** routes rejected traffic to a safe URL without revealing the
+  protected destination
+- **GateFlow** combines password, CAPTCHA, email, consent, country, VPN, and
+  scheduling rules
+- **SignalGraph** connects fingerprints, links, devices, and known emails
+  across campaigns
+- **LeadPulse** surfaces repeat visitors and builds a reviewable activity
+  history
+- **RiskLens** scores traffic and highlights visits that deserve attention
+- **AI Analyst** explores campaign data using natural-language, scoped queries
+- **LiveRelay** delivers events through Telegram, email, and signed webhooks
+- **TeamSpaces** keeps campaigns separated with invitations and role-based
+  permissions
+- **DataPort** exports campaign intelligence in CSV, JSON, and PDF
 
-In practice, this means the final destination remains hidden from many automated inspection tools while still allowing the link to behave normally for intended visitors.
+## Speed without blind spots
 
-## Anti-bot comparison
+**FastPath** keeps the public redirect flow lean while enrichment runs in the
+background. Visitors move through the required checks without waiting for
+scoring, notifications, or external integrations to finish.
 
-### UrlTrack behavior (HTTP 200, destination hidden)
-![codice 200](our.png)
+- fast server-rendered pages with minimal browser overhead
+- asynchronous enrichment, scoring, and notifications
+- local caching for frequently accessed intelligence
+- external services kept outside the critical redirect path
+- one-command startup with Python or Docker
 
-### Comparison with standard tools (final URL exposed)
-![rivelano url finale](others.png)
+## How it works
 
-## Main features
+```mermaid
+flowchart LR
+    A["Visitor opens the link"] --> B["Bot and request checks"]
+    B --> C{"Access gates"}
+    C -->|Passed| D["Record visit immediately"]
+    C -->|Rejected| E["Stop / GhostRedirect to safe URL"]
+    D --> F["Fast redirect"]
+    D -.-> G["Background enrichment"]
+    G --> H["Scoring and notifications"]
+```
 
-You can protect a link with:
+GhostRedirect keeps the protected destination out of the rejected flow.
+Automated scanners and visitors that do not pass GateFlow can be stopped or
+routed to a harmless fallback URL, while eligible traffic continues through
+FastPath.
 
-- captcha
-- password
-- email capture
-- country allowlist
-- VPN blocking
-- consent gate
-- schedule windows
+### GhostRedirect comparison
 
-After the visitor passes those checks, UrlTrack records the visit and enriches it in the background. From the dashboard you can inspect individual campaigns, trace repeated visitors across links, view device profiles, and monitor leads that emerge from repeated visits.
+| GhostRedirect | Typical URL inspection tool |
+| --- | --- |
+| ![GhostRedirect keeps the protected destination private](our.png) | ![Comparison tools expose the final destination](others.png) |
 
-Depending on configuration, tracking data can include:
+The exact result depends on the client and configuration; this is a defensive
+layer rather than a guarantee against every crawler.
 
-- country and geolocation
-- device and browser details
-- fingerprint signals
-- dwell time
-- email capture
-- VPN hints
-- cross-visit correlations
+## Demo
 
-## Why this project exists
+### Campaign Command Center
 
-Many URL shorteners hide useful statistics behind paid plans and often do not offer the level of flexibility or customization that advanced users need.
+Monitor campaign health, identity confidence, risk, interceptions, and active
+links from one operational view.
 
-UrlTrack was created to address that gap: a self-hosted solution with deep tracking, strong customization potential, and room for further expansion.
+![UrlTrack Campaign Command Center](demo-dashboard.png)
 
-It aims to provide a level of control and analytical depth comparable to platforms such as IPLogger or Grabify, while remaining fully customizable and under your own infrastructure.
+### GateFlow Studio
+
+Build visual routing flows with triggers, conditions, access gates, splits,
+GhostRedirect destinations, and real-time notifications.
+
+![UrlTrack GateFlow Studio](demo-flow-studio.png)
 
 ## Quick start
 
-If you want the least-friction local setup:
+### Installer
+
+The fastest way to run UrlTrack locally is:
 
 ```bash
 git clone https://github.com/MN-company/UrlTrack.git
@@ -64,221 +96,172 @@ cd UrlTrack
 ./install.sh --run
 ```
 
-That command will:
+The installer creates `.env` when needed, generates a secret key, prepares a
+virtual environment, installs dependencies, applies migrations, and starts the
+application.
 
-- create `.env` if missing
-- generate a strong `SECRET_KEY`
-- create `venv/`
-- install Python dependencies
-- run database migrations
-- start the local server
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000), then create the first
+owner account at `/register`.
 
-Then open:
-
-- `http://127.0.0.1:8000/`
-- first boot will send you to `http://127.0.0.1:8000/setup`
-
-## Docker mode
-
-If you prefer to run UrlTrack with Docker instead of a local Python environment:
+### Docker Compose
 
 ```bash
+git clone https://github.com/MN-company/UrlTrack.git
+cd UrlTrack
 ./install.sh --docker --run
 ```
 
-That mode prepares `.env`, keeps SQLite data in `server/data/`, and starts the stack with `docker compose up --build`.
-
-If you want Docker without starting immediately:
+To prepare the environment without starting it immediately:
 
 ```bash
 ./install.sh --docker
 docker compose up --build
 ```
 
-The container runs Alembic migrations on boot and then starts Gunicorn on port `8000`.
+The container applies Alembic migrations on boot and runs Gunicorn on port
+`8000`. SQLite data is persisted in `server/data/`.
 
-## Manual setup
+### Manual installation
 
-If you do not want the installer flow:
+Requirements:
+
+- Python 3
+- `pip` and `venv`
+- a supported SQLAlchemy database; SQLite is the default
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r server/requirements.txt
 cp .env.example .env
-SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
+SKIP_BACKGROUND_WORKER=1 python -m flask --app server:create_app db upgrade
 ./run.sh
 ```
 
-At minimum, `.env` should contain:
+Minimal configuration:
 
 ```env
-SECRET_KEY=replace-me
+SECRET_KEY=replace-with-a-long-random-value
 SERVER_URL=http://127.0.0.1:8000
 DATABASE_URL=sqlite:///data/urltrack.db
 ```
 
-## First run
+## First-run checklist
 
-On a clean database:
+1. Open `/register` and create the first owner.
+2. Name the initial workspace.
+3. Create a link and choose the gates required for its audience.
+4. Confirm that `SERVER_URL` matches the public base URL.
+5. Enable TOTP or register a passkey from Security settings.
+6. Configure retention, proxy trust, and integrations before production use.
 
-1. open `/setup`
-2. create first admin account
-3. save the one-time admin secret shown after setup
-4. sign in to dashboard
-5. optionally enable TOTP or passkeys from security settings
+Further users join by invitation. Workspace roles are `viewer`, `analyst`,
+`editor`, `admin`, and `owner`.
 
-That one-time admin secret is only for future admin creation. It is not part of normal login.
+## Connected by design
 
-## Main areas of the dashboard
+UrlTrack works as a standalone application, but its most useful integrations
+are built directly into the normal campaign workflow.
 
-### Home
+### Supabase Core
 
-Campaign summary, recent links, recent visits, and fast access to common actions.
+Connect Supabase to add managed authentication while preserving UrlTrack's
+local sessions, workspaces, roles, passkeys, and security settings. Teams can
+start with local accounts and introduce Supabase when the installation grows,
+without changing how campaigns and analytics are organized.
 
-### Campaigns
+### Provider-ready AI Analyst
 
-Per-link analytics page with visit charts, referrers, countries, engagement metrics, and a visit log.
+The AI Analyst turns campaign data into a searchable operational view. It can
+reason over visits, links, fingerprints, IP addresses, emails, and leads using
+scoped references, while streaming responses directly in the interface.
 
-### Graph
+The analysis layer is designed to remain separate from tracking and can be
+extended to different model providers. Gemini support is included out of the
+box, and AI remains completely optional: links and analytics continue to work
+when no model is configured.
 
-A visual graph connecting `canvas_hash`, visited slugs, and known emails.
+### LiveRelay notifications
 
-### Leads
-
-A lightweight lead view that groups repeated visits by fingerprint or email so you can inspect history in one place.
-
-### AI Analyst
-
-An assistant view that can reason over visits and search context using commands like `@visit:`, `@hash:`, `@link:`, `@ip:`, and `@email:`.
-
-### Settings
-
-Manage runtime values, domain lists, Telegram credentials, AI model settings, and other operational toggles.
-
-## Optional integrations
-
-None of these are mandatory for basic tracking.
-
-### Gemini
-
-Used by AI Analyst.
-
-Add to `.env`:
-
-```env
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash
+```mermaid
+flowchart LR
+    A["New visit"] --> B["Background worker"]
+    B --> C["Telegram alert"]
+    B --> D["Signed webhook"]
+    B --> E["Email workflow"]
+    C --> F["Your team"]
+    D --> G["CRM or automation"]
+    E --> F
 ```
 
-If `GEMINI_API_KEY` is empty, AI features stay visible but generation is effectively disabled.
+- **Telegram** delivers real-time visit alerts and campaign updates.
+- **Email via SMTP** handles team invitations and collaborative workflows.
+- **Signed webhooks** forward events to CRMs, internal tools, or automation
+  platforms.
 
-### Telegram
+Integrations can be configured per workspace, allowing separate teams to use
+their own destinations and credentials. None of them are required for the core
+redirect and analytics flow.
 
-Used for visit notifications and digests.
+## Project status
 
-1. create a bot with `@BotFather`
-2. send at least one message to the bot
-3. call:
+UrlTrack is under active development. The core redirect, gating, analytics,
+workspace, lead, export, and authentication flows are present, while advanced
+correlation and AI-assisted features should be treated as experimental. Data
+models and configuration may change between releases until a stable versioning
+policy is introduced.
 
-```text
-https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
-```
+Current areas of work include:
 
-4. copy the chat id into `.env`
+- improving documentation and deployment examples
+- expanding automated coverage for dashboard workflows
+- refining visitor scoring and identity correlation
+- making privacy and retention controls easier to audit
+- improving observability for background enrichment jobs
 
-```env
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-```
-
-### Cloudflare Turnstile
-
-Used only if you enable captcha gate on links.
-
-```env
-TURNSTILE_SITE_KEY=
-TURNSTILE_SECRET_KEY=
-```
-
-### is.gd
-
-Optional masking for public links when `MASK_WITH_ISGD=true`. No API key required.
-
-## Docker, Fly.io, Linux deploy
-
-This repo includes deploy assets for a few different styles:
-
-- `Dockerfile`
-- `docker-compose.yml`
-- `fly.toml`
-- `deploy/nginx/ulrtrack.conf`
-- `deploy/systemd/ulrtrack.service`
-- `deploy/fail2ban/...`
-
-For Fly.io, `fly.toml` is already configured for auto-start and auto-stop machines. For plain Linux, use the systemd and nginx files in `deploy/` as starting points, not as magic one-click infrastructure.
-
-## Useful commands
-
-Run migrations:
-
-```bash
-SKIP_BACKGROUND_WORKER=1 ./venv/bin/python -m flask --app server:create_app db upgrade
-```
-
-Create another admin from CLI:
-
-```bash
-python -m server.create_admin
-```
-
-Run local server with repo interpreter:
-
-```bash
-./venv/bin/python -m flask --app server:create_app run --host=127.0.0.1 --port=8000
-```
-
-## Repo structure
-
-- `server/` Flask app, routes, models, worker, templates, static assets
-- `migrations/` Alembic revisions
-- `deploy/` nginx, fail2ban, systemd, helper scripts
-- `tests/` pytest suite
+This section is intentionally a direction rather than a release promise.
 
 ## Troubleshooting
 
-### Root returns 404 or wrong app boots
+### The wrong application starts or `/` returns an unexpected response
 
-Usually this means the wrong interpreter is being used or a stale process is still running. Use the repo venv explicitly:
+Use the repository virtual environment explicitly and stop stale development
+processes:
 
 ```bash
 pkill -f "flask --app server:create_app run" || true
 ./venv/bin/python -m flask --app server:create_app run --host=127.0.0.1 --port=8000
 ```
 
-### `flask db` says command not found
-
-Use the repo interpreter, not a global `flask` command:
+### `flask db` reports that the command does not exist
 
 ```bash
 ./venv/bin/python -m flask --app server:create_app db upgrade
 ```
 
-### Telegram alerts do not arrive
+### Telegram notifications do not arrive
 
-Check the bot token, chat id, and whether the bot has received at least one message from the target chat.
+Check that the bot token and chat ID are correct and that the target chat has
+sent at least one message to the bot.
 
-### Docker starts but shows warning from `requests`
+### Docker starts with dependency warnings
 
-If the app still migrates and Gunicorn comes up, that warning is noisy but not fatal. Check:
+Check whether migrations completed and Gunicorn started successfully:
 
 ```bash
 docker compose ps
 docker compose logs --tail=200
 ```
 
-## Final note
+## Responsible use
 
-UrlTrack should be considered software for educational purposes.
+UrlTrack is provided for educational, research, and legitimate analytics use.
+It is not designed to establish a person's real-world identity, bypass consent,
+or facilitate harassment, surveillance, credential collection, or unauthorized
+access. Operators are responsible for informing visitors where required,
+collecting valid consent, minimizing retained data, and securing their
+deployment.
 
-It is not intended to identify any individual. The creator disclaims any responsibility connected to the proper or improper use of this tool.
+## License
+
+Distributed under the terms in [LICENSE](LICENSE).

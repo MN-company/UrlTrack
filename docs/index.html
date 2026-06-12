@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UrlTrack — campaign & visitor intelligence</title>
+  <meta name="description" content="UrlTrack is an open-source campaign tracking and visitor intelligence platform. Node-based workflow editor, cross-device identity graphs, and real-time threat scoring.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>🕵️</text></svg>">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:oklch(4% 0.018 260);--surface:oklch(10% 0.022 260);--surface-raised:oklch(14% 0.026 260/0.86);--fg:oklch(94% 0.008 260);--muted:oklch(60% 0.02 260);--subtle:oklch(44% 0.018 260);--border:oklch(22% 0.03 260);--accent:oklch(65% 0.19 45);--accent2:oklch(62% 0.17 35);--accent-glow:0 0 50px oklch(65% 0.19 45/0.25),0 0 100px oklch(65% 0.19 45/0.1);--green:oklch(66% 0.16 145);--green-soft:oklch(66% 0.16 145/0.10);--amber:oklch(72% 0.15 82);--red:oklch(63% 0.19 28);--blue:oklch(70% 0.15 245);--blue-soft:oklch(70% 0.15 245/0.10);--purple:oklch(68% 0.18 300);--purple-soft:oklch(68% 0.18 300/0.10);--glass:oklch(12% 0.022 260/0.6);--glass-border:oklch(36% 0.04 260/0.2);--radius:10px;--font-display:'SF Pro Display',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;--font-body:'SF Pro Text',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;--font-mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,monospace;accent-color:var(--accent)}
+    html{scroll-behavior:smooth;color-scheme:dark}
+    body{font-family:var(--font-body);background:var(--bg);color:var(--fg);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    .dot-grid{background-image:radial-gradient(oklch(38% 0.04 260/0.10) 1px,transparent 1px);background-size:32px 32px}
+
+    /* === Nav === */
+    nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:56px;background:oklch(4% 0.018 260/0.85);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid var(--border)}
+    .nav-logo{display:flex;align-items:center;gap:10px;font-weight:650;font-size:17px;text-decoration:none;color:var(--fg)}
+    .nav-links{display:flex;gap:24px;font-size:13px}.nav-links a{color:var(--muted);text-decoration:none;transition:color .2s}
+    .nav-links a:hover{color:var(--fg)}
+    .nav-cta{display:flex;align-items:center;gap:10px}
+    .nav-cta .gh-stars{display:flex;align-items:center;gap:5px;padding:5px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--muted);text-decoration:none;transition:border-color .2s}
+    .nav-cta .gh-stars:hover{border-color:var(--accent)}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:9px 20px;border-radius:6px;font-size:13px;font-weight:550;text-decoration:none;cursor:pointer;transition:all .2s;border:none;font-family:inherit;line-height:1}
+    .btn-accent{background:var(--accent);color:#000}.btn-accent:hover{box-shadow:var(--accent-glow);transform:translateY(-1px)}
+    .btn-outline{background:transparent;border:1px solid var(--border);color:var(--fg)}.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-green{background:var(--green);color:#000}.btn-green:hover{box-shadow:0 0 30px oklch(66% 0.16 145/0.3);transform:translateY(-1px)}
+    .btn-sm{padding:6px 14px;font-size:12px}
+    .btn-ghost{background:transparent;color:var(--muted);border:1px solid transparent}.btn-ghost:hover{color:var(--fg);border-color:var(--border)}
+
+    /* === Hero === */
+    .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 24px 80px;position:relative;overflow:hidden}
+    .hero::before{content:'';position:absolute;top:-40%;left:-30%;width:160%;height:160%;background:radial-gradient(ellipse 60% 40% at 30% 30%,oklch(65% 0.19 45/0.06) 0%,transparent 60%),radial-gradient(ellipse 50% 50% at 70% 60%,oklch(66% 0.16 145/0.035) 0%,transparent 50%),radial-gradient(ellipse 40% 40% at 50% 80%,oklch(68% 0.18 300/0.03) 0%,transparent 50%);pointer-events:none}
+    .hero-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px 5px 8px;border:1px solid var(--border);border-radius:100px;font-size:12px;color:var(--muted);margin-bottom:28px;animation:fadeUp .5s .1s both;text-decoration:none;transition:border-color .2s}
+    .hero-badge:hover{border-color:var(--accent);color:var(--fg)}
+    .hero-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulseDot 2s infinite}
+    @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.4}}
+
+    .hero h1{font-family:var(--font-display);font-size:clamp(36px,6.5vw,76px);font-weight:700;letter-spacing:-2.5px;line-height:1.05;max-width:780px;margin-bottom:20px;animation:fadeUp .5s .2s both}
+    .hero h1 .highlight{background:linear-gradient(135deg,var(--accent),var(--green),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero p{font-size:clamp(15px,2vw,18px);color:var(--muted);max-width:540px;margin-bottom:32px;animation:fadeUp .5s .3s both}
+    .hero-actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;animation:fadeUp .5s .35s both}
+    .hero-stats{display:flex;gap:40px;margin-top:48px;animation:fadeUp .5s .4s both}
+    .hero-stats .stat{text-align:center}
+    .hero-stats .stat-value{font-family:var(--font-display);font-size:28px;font-weight:700;letter-spacing:-1px;color:var(--fg)}
+    .hero-stats .stat-label{font-size:12px;color:var(--subtle);margin-top:2px;text-transform:uppercase;letter-spacing:.4px}
+
+    .hero-showcase{margin-top:48px;display:flex;gap:20px;flex-wrap:wrap;justify-content:center;animation:fadeUp .5s .45s both;width:100%;max-width:960px}
+    .hero-showcase .pill{display:flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--border);border-radius:6px;font-size:13px;color:var(--muted);transition:all .25s;cursor:default}
+    .hero-showcase .pill:hover{border-color:var(--accent);color:var(--fg);transform:translateY(-2px);box-shadow:var(--accent-glow)}
+
+    /* === Sections === */
+    section{padding:80px 24px;position:relative}
+    .section-inner{max-width:1100px;margin:0 auto}
+    .section-label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--accent);margin-bottom:10px}
+    .section-title{font-family:var(--font-display);font-size:clamp(28px,3.6vw,42px);font-weight:700;letter-spacing:-1.2px;line-height:1.1;margin-bottom:12px}
+    .section-sub{font-size:16px;color:var(--muted);max-width:540px;margin-bottom:44px;line-height:1.5}
+
+    /* === Feature grid === */
+    .features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+    .feature-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:28px;backdrop-filter:blur(14px);transition:all .25s}
+    .feature-card:hover{border-color:oklch(65% 0.19 45/0.3);transform:translateY(-2px);box-shadow:0 8px 40px oklch(0% 0 0/0.25)}
+    .feature-card.featured{background:oklch(14% 0.028 260/0.8);border-color:oklch(65% 0.19 45/0.25)}
+    .feature-card.featured:hover{border-color:var(--accent);box-shadow:var(--accent-glow)}
+    .feature-card .icon{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:16px;border:1px solid var(--border)}
+    .feature-card h3{font-family:var(--font-display);font-size:17px;font-weight:600;letter-spacing:-0.2px;margin-bottom:6px}
+    .feature-card p{font-size:13px;color:var(--muted);line-height:1.55}
+    .feature-card .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:550;text-transform:uppercase;letter-spacing:.4px;margin-top:10px}
+    .tag-new{background:var(--purple-soft);color:var(--purple)}.tag-core{background:var(--blue-soft);color:var(--blue)}.tag-hot{background:oklch(65% 0.19 45/0.15);color:var(--accent)}
+
+    /* === Featured row — Node Editor === */
+    .featured-row{display:grid;grid-template-columns:1.2fr 1fr;gap:40px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:40px;margin-bottom:40px;position:relative;overflow:hidden}
+    .featured-row::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--purple),var(--green));opacity:.6}
+    .featured-row .visual{position:relative;background:var(--bg);border-radius:8px;border:1px solid var(--border);padding:14px;overflow:hidden;line-height:0}
+    .featured-row .visual svg.node-flow{width:100%;height:auto;display:block;max-height:300px}
+    .featured-row .visual .nf-node{cursor:pointer;transition:all .3s}
+    .featured-row .visual .nf-node:hover{filter:brightness(1.3)}
+    .featured-row .visual .nf-port{fill:var(--bg);stroke-width:1.5;transition:all .3s;cursor:crosshair}
+    .featured-row .visual .nf-port:hover{stroke:var(--accent)!important;fill:oklch(65% 0.19 45/0.15)}
+    .featured-row h2{font-family:var(--font-display);font-size:clamp(22px,2.8vw,32px);font-weight:700;letter-spacing:-.8px;line-height:1.15;margin-bottom:12px}
+    .featured-row p{font-size:14px;color:var(--muted);line-height:1.55;margin-bottom:16px}
+    .featured-row .badge-row{display:flex;flex-wrap:wrap;gap:8px}
+    .featured-row .badge-row .b{padding:3px 10px;border-radius:4px;font-size:11px;background:var(--surface-raised);border:1px solid var(--border);color:var(--muted)}
+
+    /* === Zero telemetry === */
+    .trust-section{background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+    .trust-layout{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+    .trust-layout .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .trust-layout .stat-grid .ts{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:18px;text-align:center;backdrop-filter:blur(14px)}
+    .trust-layout .stat-grid .ts .tv{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-1px;margin-bottom:2px}
+    .trust-layout .stat-grid .ts .tl{font-size:11px;color:var(--muted)}
+    .trust-banner{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:28px;margin-top:40px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;backdrop-filter:blur(14px)}
+    .trust-banner .tb-icon{font-size:32px;flex-shrink:0}
+    .trust-banner .tb-text{flex:1;font-size:13px;color:var(--muted);line-height:1.55}
+    .trust-banner .tb-text strong{color:var(--fg)}
+
+    /* === Cross tracking === */
+    .cross-row{display:grid;grid-template-columns:1fr 1.2fr;gap:40px;align-items:center;margin-bottom:40px;padding:32px 0;border-bottom:1px solid var(--border)}
+    .cross-row .graph-visual{position:relative;min-height:200px;background:var(--bg);border-radius:8px;border:1px solid var(--border);padding:16px;overflow:hidden}
+    .cross-row .graph-visual .cluster-grid{display:flex;gap:16px;justify-content:center;align-items:center;min-height:160px}
+    .cross-row .graph-visual .cluster{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;position:relative;transition:all .3s}
+    .cross-row .graph-visual .cluster:hover{transform:scale(1.15)}
+    .cross-row .graph-visual .cluster .clabel{position:absolute;bottom:-18px;font-size:10px;color:var(--subtle);white-space:nowrap}
+    .cross-row .graph-visual .cluster .cscore{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:700}
+    .cross-row .graph-visual .edges{position:absolute;inset:0;pointer-events:none}
+    .cross-row h2{font-family:var(--font-display);font-size:clamp(20px,2.6vw,30px);font-weight:700;letter-spacing:-.8px;line-height:1.15;margin-bottom:10px}
+    .cross-row p{font-size:14px;color:var(--muted);line-height:1.55;margin-bottom:14px}
+
+    /* === Track Me demo === */
+    .demo-section{background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+    .demo-layout{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+    .demo-text .btn{margin-top:6px;padding:12px 24px;font-size:14px}
+    .demo-preview{background:oklch(8% 0.02 260);border:1px solid var(--border);border-radius:var(--radius);padding:24px;min-height:300px;position:relative;overflow:hidden}
+    .demo-preview::before{content:'Live Demo';position:absolute;top:10px;right:12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--green);background:var(--green-soft);padding:2px 8px;border-radius:4px}
+    .demo-preview .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid oklch(22% 0.03 260/0.5);font-size:13px}
+    .demo-preview .row:last-child{border-bottom:none}
+    .demo-preview .row .label{color:var(--subtle)}
+    .demo-preview .row .value{color:var(--fg);font-weight:500;font-family:var(--font-mono);font-size:12px;max-width:55%;text-align:right;word-break:break-all}
+    .demo-preview .trust-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:550}
+    .demo-preview .trust-high{background:var(--green-soft);color:var(--green)}
+    .demo-preview .trust-mid{background:oklch(72% 0.15 82/0.12);color:var(--amber)}
+    .demo-preview .trust-low{background:oklch(63% 0.19 28/0.12);color:var(--red)}
+    .demo-footnote{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:var(--subtle)}
+
+    /* === How it works === */
+    .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+    .step{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:24px;backdrop-filter:blur(8px);transition:all .2s}
+    .step:hover{border-color:var(--accent);transform:translateY(-2px)}
+    .step-num{width:28px;height:28px;border-radius:6px;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;margin-bottom:12px}
+    .step h3{font-size:15px;font-weight:600;margin-bottom:4px}
+    .step p{font-size:13px;color:var(--muted);line-height:1.5}
+
+    /* === Code === */
+    .code-block{background:oklch(6% 0.02 260);border:1px solid var(--border);border-radius:var(--radius);padding:20px;font-family:var(--font-mono);font-size:12px;line-height:1.7;overflow-x:auto}
+    .code-block .comment{color:var(--subtle)}.code-block .keyword{color:var(--blue)}
+    .code-block .string{color:var(--green)}.code-block .fn{color:var(--accent)}
+
+    /* === OSS grid === */
+    .oss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:32px}
+    .oss-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:22px;backdrop-filter:blur(8px);text-decoration:none;color:inherit;transition:all .2s}
+    .oss-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+    .oss-card .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .oss-card .name{font-weight:600;font-size:14px}
+    .oss-card .stars{font-size:12px;color:var(--muted)}
+    .oss-card .desc{font-size:12px;color:var(--muted);line-height:1.45}
+
+    /* === Footer === */
+    footer{border-top:1px solid var(--border);padding:40px 24px 28px}
+    .footer-inner{max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;justify-content:space-between;gap:28px}
+    .footer-col h4{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--subtle);margin-bottom:10px}
+    .footer-col a{display:block;font-size:13px;color:var(--muted);text-decoration:none;margin-bottom:6px;transition:color .2s}
+    .footer-col a:hover{color:var(--fg)}
+    .footer-bottom{max-width:1100px;margin:32px auto 0;padding-top:20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:12px;color:var(--subtle)}
+
+    /* === Animations === */
+    @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes pulseSlow{0%,100%{opacity:1}50%{opacity:.5}}
+    .pulse-slow{animation:pulseSlow 3s ease-in-out infinite}
+    .glow-hover{transition:box-shadow .3s}
+    .glow-hover:hover{box-shadow:0 0 30px oklch(65% 0.19 45/0.15)}
+
+    /* === Cursor glow === */
+    .cursor-glow{position:fixed;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,oklch(65% 0.19 45/0.035) 0%,transparent 70%);pointer-events:none;transform:translate(-50%,-50%);z-index:-1;transition:opacity .3s}
+    @media (prefers-reduced-motion:reduce){.cursor-glow{display:none}}
+
+    /* === Responsive === */
+    @media(max-width:800px){
+      .nav-links,.nav-cta .gh-stars{display:none}
+      .demo-layout,.featured-row,.cross-row{grid-template-columns:1fr}
+      .featured-row{text-align:center}
+      .hero-stats{gap:20px;flex-wrap:wrap;justify-content:center}
+      section{padding:48px 16px}
+      .features-grid{grid-template-columns:1fr}
+      .steps{grid-template-columns:1fr}
+      .hero-showcase .pill{font-size:12px;padding:6px 12px}
+    }
+    @media(max-width:480px){
+      nav{padding:0 16px}
+      .hero{padding:100px 16px 60px}
+      .demo-preview .row .value{font-size:11px}
+      .featured-row .visual .node-grid{grid-template-columns:1fr 1fr}
+    }
+  </style>
+</head>
+<body class="dot-grid">
+  <div class="cursor-glow" id="cursorGlow"></div>
+
+  <!-- ===== Nav ===== -->
+  <nav>
+    <a href="#" class="nav-logo" style="text-decoration:none;color:var(--fg);">
+      <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+        <rect x="2" y="2" width="24" height="24" rx="6" stroke="currentColor" stroke-width="1.5" fill="none"/>
+        <path d="M9 14h10M14 9v10" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="14" cy="14" r="3" fill="var(--accent)" opacity=".3"/>
+      </svg>
+      UrlTrack
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#oss">Open source</a>
+    </div>
+    <div class="nav-cta">
+      <a href="https://github.com/MN-company/UrlTrack" class="gh-stars" target="_blank">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a href="https://github.com/MN-company/UrlTrack" class="btn btn-accent btn-sm" target="_blank">Get started →</a>
+    </div>
+  </nav>
+
+  <!-- ===== Hero ===== -->
+  <header class="hero">
+    <a href="#roadmap" class="hero-badge">
+      <span class="dot"></span>
+      v0.5 released — track what's next
+      <span style="opacity:.5;margin-left:4px;">→</span>
+    </a>
+
+    <h1>
+      Track visitors,<br>
+      <span class="highlight">not just clicks.</span>
+    </h1>
+
+    <p>
+      Open-source campaign intelligence with a node-based workflow editor, 
+      cross-device identity graphs, and real-time threat scoring — 
+      all in one platform.
+    </p>
+
+    <div class="hero-actions">
+      <a href="https://github.com/MN-company/UrlTrack" class="btn btn-accent" target="_blank">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+      <button class="btn btn-accent" onclick="openComingSoon()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Launch cloud app
+      </button>
+    </div>
+
+    <div class="hero-stats">
+      <div class="stat"><div class="stat-value">168</div><div class="stat-label">commits</div></div>
+      <div class="stat"><div class="stat-value">15+</div><div class="stat-label">node types</div></div>
+      <div class="stat"><div class="stat-value">4</div><div class="stat-label">defense levels</div></div>
+      <div class="stat"><div class="stat-value">MIT</div><div class="stat-label">license</div></div>
+    </div>
+
+    <div class="hero-showcase">
+      <span class="pill"><span style="color:var(--accent)">⚡</span> Node workflow editor</span>
+      <span class="pill"><span style="color:var(--purple)">🧬</span> Identity graph</span>
+      <span class="pill"><span style="color:var(--green)">🛡️</span> Smart defenses</span>
+      <span class="pill"><span style="color:var(--blue)">🔗</span> Cross-device tracking</span>
+      <span class="pill"><span style="color:var(--accent)">📊</span> Intel & analytics</span>
+    </div>
+  </header>
+
+  <!-- ===== Features ===== -->
+  <section id="features">
+    <div class="section-inner">
+      <div class="section-label">Features</div>
+      <h2 class="section-title">Everything you need<br>to understand your traffic.</h2>
+      <p class="section-sub">From link creation to visitor intelligence — UrlTrack gives you the tools to track, analyze, and protect every interaction.</p>
+
+      <!-- Featured: Node Editor -->
+      <div class="featured-row">
+        <div class="visual">
+          <svg viewBox="0 0 520 280" class="node-flow" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+            <defs>
+              <linearGradient id="nf-accent" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="oklch(65% 0.19 45/0.2)"/><stop offset="100%" stop-color="oklch(65% 0.19 45/0.02)"/></linearGradient>
+              <linearGradient id="nf-green" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="oklch(66% 0.16 145/0.2)"/><stop offset="100%" stop-color="oklch(66% 0.16 145/0.02)"/></linearGradient>
+              <linearGradient id="nf-purple" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="oklch(68% 0.18 300/0.2)"/><stop offset="100%" stop-color="oklch(68% 0.18 300/0.02)"/></linearGradient>
+              <linearGradient id="nf-blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="oklch(70% 0.15 245/0.2)"/><stop offset="100%" stop-color="oklch(70% 0.15 245/0.02)"/></linearGradient>
+              <linearGradient id="nf-subtle" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="oklch(22% 0.03 260/.5)"/><stop offset="100%" stop-color="oklch(22% 0.03 260/0)"/></linearGradient>
+              <marker id="nf-arr-accent" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--accent)"/></marker>
+              <marker id="nf-arr-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--green)"/></marker>
+              <marker id="nf-arr-purple" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--purple)"/></marker>
+              <marker id="nf-arr-subtle" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--subtle)"/></marker>
+            </defs>
+            <!-- Grid background -->
+            <rect width="520" height="280" fill="var(--bg)" rx="7"/>
+            <g opacity=".06">
+              <line x1="0" y1="40" x2="520" y2="40" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="0" y1="80" x2="520" y2="80" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="0" y1="120" x2="520" y2="120" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="0" y1="160" x2="520" y2="160" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="0" y1="200" x2="520" y2="200" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="0" y1="240" x2="520" y2="240" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="80" y1="0" x2="80" y2="280" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="160" y1="0" x2="160" y2="280" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="240" y1="0" x2="240" y2="280" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="320" y1="0" x2="320" y2="280" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="400" y1="0" x2="400" y2="280" stroke="var(--fg)" stroke-width=".5"/>
+              <line x1="480" y1="0" x2="480" y2="280" stroke="var(--fg)" stroke-width=".5"/>
+            </g>
+            <!-- Arrows between nodes -->
+            <path d="M115,60 C175,60 175,80 235,80" fill="none" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#nf-arr-accent)" opacity=".6"/>
+            <path d="M115,100 C175,100 175,160 235,160" fill="none" stroke="var(--green)" stroke-width="1.5" marker-end="url(#nf-arr-green)" opacity=".6"/>
+            <path d="M355,80 C395,80 395,60 435,60" fill="none" stroke="var(--subtle)" stroke-width="1" marker-end="url(#nf-arr-subtle)" opacity=".4"/>
+            <path d="M355,160 C395,160 395,140 435,140" fill="none" stroke="var(--subtle)" stroke-width="1" marker-end="url(#nf-arr-subtle)" opacity=".4"/>
+            <path d="M355,180 C395,180 395,220 435,220" fill="none" stroke="var(--subtle)" stroke-width="1" marker-end="url(#nf-arr-subtle)" opacity=".4"/>
+            <!-- Node: Trigger -->
+            <g class="nf-node">
+              <rect x="32" y="45" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--accent)" stroke-width="1.5"/>
+              <text x="42" y="64" font-size="14" fill="var(--accent)">🌐</text>
+              <text x="60" y="64" font-size="9" fill="var(--fg)" font-weight="600">Trigger</text>
+              <circle cx="98" cy="60" r="5" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5" class="nf-port"/>
+            </g>
+            <!-- Node: Condition -->
+            <g class="nf-node">
+              <rect x="118" y="65" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--green)" stroke-width="1.5"/>
+              <circle cx="118" cy="80" r="5" fill="var(--bg)" stroke="var(--green)" stroke-width="1.5" class="nf-port"/>
+              <text x="128" y="84" font-size="14" fill="var(--green)">🔍</text>
+              <text x="146" y="84" font-size="9" fill="var(--fg)" font-weight="600">Condition</text>
+              <circle cx="184" cy="75" r="4" fill="var(--bg)" stroke="var(--green)" stroke-width="1.5" class="nf-port"/>
+              <circle cx="184" cy="85" r="4" fill="var(--bg)" stroke="var(--green)" stroke-width="1.5" class="nf-port"/>
+            </g>
+            <!-- Node: Condition - country -->
+            <g class="nf-node">
+              <rect x="118" y="145" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--green)" stroke-width="1.5"/>
+              <circle cx="118" cy="160" r="5" fill="var(--bg)" stroke="var(--green)" stroke-width="1.5" class="nf-port"/>
+              <text x="128" y="164" font-size="14" fill="var(--green)">🌍</text>
+              <text x="146" y="164" font-size="9" fill="var(--fg)" font-weight="600">Country</text>
+              <circle cx="184" cy="155" r="4" fill="var(--bg)" stroke="var(--green)" stroke-width="1.5" class="nf-port"/>
+              <circle cx="184" cy="165" r="4" fill="var(--bg)" stroke="var(--green)" stroke-width="1.5" class="nf-port"/>
+            </g>
+            <!-- Split label -->
+            <text x="280" y="55" text-anchor="middle" font-size="15" fill="var(--purple)" opacity=".7">🔀</text>
+            <text x="280" y="67" text-anchor="middle" font-size="7" fill="var(--subtle)">Split 70/30</text>
+            <!-- Node: Email gate (split A -> bottom branch) -->
+            <g class="nf-node">
+              <rect x="240" y="145" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--purple)" stroke-width="1.5"/>
+              <circle cx="240" cy="160" r="5" fill="var(--bg)" stroke="var(--purple)" stroke-width="1.5" class="nf-port"/>
+              <text x="250" y="164" font-size="14" fill="var(--purple)">📧</text>
+              <text x="268" y="164" font-size="9" fill="var(--fg)" font-weight="600">Email gate</text>
+              <circle cx="306" cy="155" r="4" fill="var(--bg)" stroke="var(--purple)" stroke-width="1.5" class="nf-port"/>
+              <circle cx="306" cy="165" r="4" fill="var(--bg)" stroke="var(--purple)" stroke-width="1.5" class="nf-port"/>
+            </g>
+            <!-- Node: Redirect (split B -> top branch) -->
+            <g class="nf-node">
+              <rect x="240" y="65" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--accent)" stroke-width="1.5"/>
+              <circle cx="240" cy="80" r="5" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5" class="nf-port"/>
+              <text x="250" y="84" font-size="14" fill="var(--accent)">↗️</text>
+              <text x="268" y="84" font-size="9" fill="var(--fg)" font-weight="600">Redirect</text>
+              <circle cx="306" cy="80" r="5" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5" class="nf-port"/>
+            </g>
+            <!-- Node: Block terminal -->
+            <g class="nf-node">
+              <rect x="320" y="45" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--red)" stroke-width="1.5"/>
+              <circle cx="320" cy="60" r="5" fill="var(--bg)" stroke="var(--red)" stroke-width="1.5" class="nf-port"/>
+              <text x="330" y="64" font-size="14" fill="var(--red)">🛑</text>
+              <text x="348" y="64" font-size="9" fill="var(--fg)" font-weight="600">Block</text>
+            </g>
+            <!-- Node: Notify -->
+            <g class="nf-node">
+              <rect x="320" y="125" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--blue)" stroke-width="1.5"/>
+              <circle cx="320" cy="140" r="5" fill="var(--bg)" stroke="var(--blue)" stroke-width="1.5" class="nf-port"/>
+              <text x="330" y="144" font-size="14" fill="var(--blue)">📲</text>
+              <text x="348" y="144" font-size="9" fill="var(--fg)" font-weight="600">Telegram</text>
+              <circle cx="386" cy="140" r="5" fill="var(--bg)" stroke="var(--blue)" stroke-width="1.5" class="nf-port"/>
+            </g>
+            <!-- Node: Notify endpoint -->
+            <g class="nf-node">
+              <rect x="320" y="205" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--blue)" stroke-width="1.5"/>
+              <circle cx="320" cy="220" r="5" fill="var(--bg)" stroke="var(--blue)" stroke-width="1.5" class="nf-port"/>
+              <text x="330" y="224" font-size="14" fill="var(--blue)">🔔</text>
+              <text x="348" y="224" font-size="9" fill="var(--fg)" font-weight="600">Notify</text>
+              <circle cx="386" cy="220" r="5" fill="var(--bg)" stroke="var(--blue)" stroke-width="1.5" class="nf-port"/>
+            </g>
+            <!-- Node: Redirect final -->
+            <g class="nf-node">
+              <rect x="400" y="45" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--accent)" stroke-width="1.5"/>
+              <circle cx="400" cy="60" r="5" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5" class="nf-port"/>
+              <text x="410" y="64" font-size="14" fill="var(--accent)">↗️</text>
+              <text x="428" y="64" font-size="9" fill="var(--fg)" font-weight="600">Redirect</text>
+            </g>
+            <!-- Node: Block final -->
+            <g class="nf-node">
+              <rect x="400" y="125" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--red)" stroke-width="1.5"/>
+              <circle cx="400" cy="140" r="5" fill="var(--bg)" stroke="var(--red)" stroke-width="1.5" class="nf-port"/>
+              <text x="410" y="144" font-size="14" fill="var(--red)">🛑</text>
+              <text x="428" y="144" font-size="9" fill="var(--fg)" font-weight="600">Block</text>
+            </g>
+            <!-- Node: Redirect final2 -->
+            <g class="nf-node">
+              <rect x="400" y="205" width="66" height="30" rx="6" fill="var(--surface-raised)" stroke="var(--accent)" stroke-width="1.5"/>
+              <circle cx="400" cy="220" r="5" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5" class="nf-port"/>
+              <text x="410" y="224" font-size="14" fill="var(--accent)">↗️</text>
+              <text x="428" y="224" font-size="9" fill="var(--fg)" font-weight="600">Redirect</text>
+            </g>
+            <!-- Edge labels -->
+            <rect x="135" y="86" width="30" height="14" rx="4" fill="oklch(66% 0.16 145/0.15)" stroke="oklch(66% 0.16 145/0)" stroke-width="0"/>
+            <text x="150" y="96" text-anchor="middle" font-size="6" fill="var(--green)">Y</text>
+            <rect x="135" y="106" width="30" height="14" rx="4" fill="oklch(65% 0.19 45/0.15)" stroke="oklch(65% 0.19 45/0)"/>
+            <text x="150" y="116" text-anchor="middle" font-size="6" fill="var(--accent)">N</text>
+            <!-- Bottom tooltip -->
+            <rect x="120" y="252" width="280" height="20" rx="4" fill="var(--surface-raised)" stroke="var(--border)" stroke-width=".5"/>
+            <text x="260" y="265" text-anchor="middle" font-size="8" fill="var(--muted)">Selected: redirect /google → https://www.google.com</text>
+          </svg>
+        </div>
+        <div>
+          <span class="tag tag-hot">⭐ Highlight</span>
+          <h2 style="margin-top:8px">Node workflow editor</h2>
+          <p>Build complex visitor routing logic visually. Drag, connect, configure — no code required. Every link gets its own decision pipeline.</p>
+          <div class="badge-row">
+            <span class="b">🌐 Trigger</span>
+            <span class="b">🔍 Condition</span>
+            <span class="b">⚡ Action</span>
+            <span class="b">🔀 Split</span>
+            <span class="b">🛑 Terminal</span>
+          </div>
+          <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:12px;color:var(--muted)">16 node types ·</span>
+            <span style="font-size:12px;color:var(--muted)">drag-to-connect ·</span>
+            <span style="font-size:12px;color:var(--muted)">real-time validation ·</span>
+            <span style="font-size:12px;color:var(--muted)">draft persistence</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cross Tracking row -->
+      <div class="cross-row">
+        <div>
+          <span class="tag tag-hot">⭐ Highlight</span>
+          <h2 style="margin-top:8px">Cross-device identity graph</h2>
+          <p>Link visitors across campaigns, devices, and IPs. The identity graph detects the same user even when they switch browsers, clear cookies, or use a VPN — without third-party cookies.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">
+            <div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:var(--accent)">94%</div>
+              <div style="font-size:11px;color:var(--muted)">match accuracy</div>
+            </div>
+            <div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:var(--purple)">3K+</div>
+              <div style="font-size:11px;color:var(--muted)">identities resolved</div>
+            </div>
+            <div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:var(--green)">15+</div>
+              <div style="font-size:11px;color:var(--muted)">signals per visitor</div>
+            </div>
+            <div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:var(--blue)">4</div>
+              <div style="font-size:11px;color:var(--muted)">defense layers</div>
+            </div>
+          </div>
+        </div>
+        <div class="graph-visual">
+          <svg viewBox="0 0 340 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+            <defs>
+              <linearGradient id="cg-accent" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity=".25"/><stop offset="100%" stop-color="var(--accent)" stop-opacity=".05"/></linearGradient>
+              <linearGradient id="cg-blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--blue)" stop-opacity=".2"/><stop offset="100%" stop-color="var(--blue)" stop-opacity=".05"/></linearGradient>
+              <linearGradient id="cg-purple" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--purple)" stop-opacity=".2"/><stop offset="100%" stop-color="var(--purple)" stop-opacity=".05"/></linearGradient>
+            </defs>
+            <!-- Connection lines -->
+            <path d="M60,100 C110,30 230,30 280,100" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4 3" opacity=".5"/>
+            <path d="M60,100 C110,170 230,170 280,100" fill="none" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3" opacity=".5"/>
+            <path d="M170,35 C170,30 170,70 170,100" fill="none" stroke="var(--purple)" stroke-width="1" stroke-dasharray="4 3" opacity=".4"/>
+            <!-- Animated dot -->
+            <circle r="3" fill="var(--accent)" opacity=".7"><animate attributeName="cx" values="60;280" dur="3s" repeatCount="indefinite"/><animate attributeName="cy" values="100;100" dur="3s" repeatCount="indefinite"/></circle>
+            <!-- Cluster: Email -->
+            <circle cx="60" cy="100" r="36" fill="var(--accent-soft, oklch(65% 0.19 45/0.1))" stroke="var(--accent)" stroke-width="2"/>
+            <text x="60" y="93" text-anchor="middle" font-size="20">👤</text>
+            <text x="60" y="108" text-anchor="middle" font-size="7" fill="var(--muted)">Email</text>
+            <!-- Cluster: Device A -->
+            <circle cx="170" cy="50" r="38" fill="url(#cg-blue)" stroke="var(--blue)" stroke-width="2"/>
+            <text x="170" y="43" text-anchor="middle" font-size="22">🖥️</text>
+            <text x="170" y="58" text-anchor="middle" font-size="7" fill="var(--muted)">Desktop</text>
+            <text x="170" y="67" text-anchor="middle" font-size="6" fill="var(--blue)">Chrome 126</text>
+            <!-- Cluster: Device B -->
+            <circle cx="280" cy="100" r="38" fill="url(#cg-purple)" stroke="var(--purple)" stroke-width="2"/>
+            <text x="280" y="93" text-anchor="middle" font-size="22">📱</text>
+            <text x="280" y="108" text-anchor="middle" font-size="7" fill="var(--muted)">Mobile</text>
+            <text x="280" y="117" text-anchor="middle" font-size="6" fill="var(--purple)">Safari · iOS</text>
+            <!-- Score badge on Device B -->
+            <rect x="302" y="68" width="28" height="16" rx="8" fill="var(--green-soft)" stroke="var(--green)" stroke-width="1"/>
+            <text x="316" y="79" text-anchor="middle" font-size="8" fill="var(--green)" font-weight="700">94%</text>
+            <!-- Details footer -->
+            <text x="170" y="165" text-anchor="middle" font-size="8" fill="var(--subtle)">Same user across 3 campaigns · 2 IPs · fingerprint + canvas match</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Other features grid -->
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="icon" style="border-color:var(--accent);color:var(--accent);">🔗</div>
+          <h3>Campaign tracking</h3>
+          <p>Create trackable links with source attribution, QR codes, and per-campaign analytics. Route visitors through node-based workflows.</p>
+          <span class="tag tag-core">Core</span>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="border-color:var(--purple);color:var(--purple);">🧬</div>
+          <h3>Identity graph</h3>
+          <p>Cross-device identity resolution. Link fingerprints, IPs, emails, and devices to detect the same user across campaigns.</p>
+          <span class="tag tag-new">New</span>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="border-color:var(--blue);color:var(--blue);">📊</div>
+          <h3>Global intel</h3>
+          <p>Aggregated risk scoring, per-campaign and per-link analytics, visit logs with trust/risk badges, and deep fingerprint inspection.</p>
+          <span class="tag tag-core">Core</span>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="border-color:var(--green);color:var(--green);">📋</div>
+          <h3>Visit log</h3>
+          <p>Every visitor logged with timestamp, IP, fingerprint hash, trust score, and risk badge. Full drill-down into device profiles.</p>
+          <span class="tag tag-core">Core</span>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="border-color:var(--amber);color:var(--amber);">🛡️</div>
+          <h3>Smart gates</h3>
+          <p>Email gate, password gate, captcha gate, consent gate. Route visitors based on device, country, time, bot score, or VPN risk.</p>
+          <span class="tag tag-core">Core</span>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="border-color:var(--accent);color:var(--accent);">🤖</div>
+          <h3>AI analyst</h3>
+          <p>Context-aware AI assistant that audits traffic, explains risk scores, suggests defenses, and generates campaign reports.</p>
+          <span class="tag tag-new">New</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Fingerprint demo ===== -->
+  <section id="demo" class="demo-section">
+    <div class="section-inner">
+      <div class="demo-layout">
+        <div class="demo-text">
+          <div class="section-label">Fingerprint demo</div>
+          <h2 class="section-title" style="margin-bottom:10px;">See what we collect.<br>On yourself.</h2>
+          <p style="font-size:15px;color:var(--muted);margin-bottom:20px;line-height:1.5;">
+            Click the button. We'll fingerprint your browser in real time —
+            canvas, WebGL, audio, fonts, network. The same signals UrlTrack uses
+            to identify visitors and detect threats. No data leaves your machine.
+          </p>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+            <button class="btn btn-accent" onclick="openTrackDemo()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              Fingerprint me
+            </button>
+          </div>
+          <div class="demo-footnote">
+            <span style="color:var(--green)">●</span>
+            All processing client-side. Nothing leaves your browser.
+          </div>
+        </div>
+
+        <div class="demo-preview" id="demoPreview">
+          <div class="row">
+            <span class="label">Visitor ID</span>
+            <span class="value" id="demoId">#<span style="opacity:.4">waiting…</span></span>
+          </div>
+          <div class="row">
+            <span class="label">IP (via WebRTC)</span>
+            <span class="value" id="demoIp"><span style="opacity:.4">click to scan</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Browser / OS</span>
+            <span class="value" id="demoBrowser"><span style="opacity:.4">—</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Screen</span>
+            <span class="value" id="demoScreen"><span style="opacity:.4">—</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Timezone</span>
+            <span class="value" id="demoTz"><span style="opacity:.4">—</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Trust level</span>
+            <span class="value"><span class="trust-badge trust-mid" id="demoTrust">Unknown</span></span>
+          </div>
+          <div style="margin-top:10px;text-align:center;">
+            <button class="btn btn-sm btn-outline" onclick="openTrackDemo()">View full report →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Workflow ===== -->
+  <section id="workflow">
+    <div class="section-inner">
+      <div class="section-label">Workflow</div>
+      <h2 class="section-title">Four steps,<br>one pipeline.</h2>
+      <p class="section-sub">From link creation to visitor intelligence — in minutes.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Create a campaign</h3>
+          <p>Set a slug, Safe URL, default source, and defenses. Generate a trackable link with optional QR code and UTM parameters.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Define the visitor flow</h3>
+          <p>Use the visual node editor to decide what happens per visitor: redirect, gate, block, notify. Add conditions by device, country, bot score, or VPN risk.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Capture fingerprints</h3>
+          <p>Every visitor fingerprinted via canvas, WebGL, audio, and network signals. The identity graph links them across devices and campaigns.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <h3>Review & act</h3>
+          <p>Cross-tracking alerts flag matching identities. Review confidence, match reasons, and risk scores. Label, block, or escalate from the queue.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Code ===== -->
+  <section style="padding-top:0;">
+    <div class="section-inner">
+      <div class="section-label">Quick start</div>
+      <h2 class="section-title">Build your self.<br>Deploy anywhere.</h2>
+      <p class="section-sub">Self-hosted in two commands. No vendor lock-in, no hidden fees.</p>
+
+      <div style="display:flex;gap:14px;margin-bottom:20px;">
+        <button class="btn btn-sm btn-accent" onclick="switchInstall('docker')" id="installTabDocker" style="flex:1;justify-content:center">🐳 Docker</button>
+        <button class="btn btn-sm btn-outline" onclick="switchInstall('source')" id="installTabSource" style="flex:1;justify-content:center">📦 Build from source</button>
+      </div>
+
+      <div class="code-block" id="installDocker">
+        <span class="comment"># Clone, configure, and launch</span><br>
+        <span style="color:var(--fg)">git clone https://github.com/MN-company/UrlTrack.git</span><br>
+        <span style="color:var(--fg)">cd UrlTrack</span><br>
+        <span style="color:var(--fg)">./install.sh --docker --run</span><br><br>
+        <span class="comment"># Open http://127.0.0.1:8000</span>
+      </div>
+
+      <div class="code-block" id="installSource" style="display:none">
+        <span class="comment"># Clone the repository</span><br>
+        <span style="color:var(--fg)">git clone https://github.com/MN-company/UrlTrack.git</span><br>
+        <span style="color:var(--fg)">cd UrlTrack</span><br><br>
+        <span class="comment"># Install dependencies & start</span><br>
+        <span style="color:var(--fg)">./install.sh --run</span><br><br>
+        <span class="comment"># Open http://127.0.0.1:8000</span>
+      </div>
+
+      <div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+        <span>✅ No telemetry</span>
+        <span>✅ Your data, your server</span>
+        <span>✅ Full API access</span>
+        <span>✅ MIT licensed</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Zero telemetry ===== -->
+  <section id="privacy" class="trust-section">
+    <div class="section-inner">
+      <div class="trust-layout">
+        <div>
+          <div class="section-label">Zero telemetry</div>
+          <h2 class="section-title">We never see your data.</h2>
+          <p class="section-sub" style="margin-bottom:0">
+            The code has no phone-home, no analytics, no tracking of you.
+            Self‑hosted means your data stays on <em>your</em> server.
+            We built UrlTrack to give <em>you</em> the intelligence — not to collect it.
+          </p>
+          <div style="margin-top:18px;display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted)">
+            <span style="color:var(--green)">✓</span> Zero external requests
+            <span style="color:var(--green);margin-left:8px">✓</span> No cookies, no trackers
+            <span style="color:var(--green);margin-left:8px">✓</span> Full auditability
+          </div>
+        </div>
+        <div class="stat-grid">
+          <div class="ts">
+            <div class="tv" style="color:var(--green)">0</div>
+            <div class="tl">External requests at runtime</div>
+          </div>
+          <div class="ts">
+            <div class="tv" style="color:var(--accent)">100%</div>
+            <div class="tl">Self‑hosted, no vendor lock‑in</div>
+          </div>
+          <div class="ts">
+            <div class="tv" style="color:var(--purple)">MIT</div>
+            <div class="tl">License — free to fork & modify</div>
+          </div>
+          <div class="ts">
+            <div class="tv" style="color:var(--blue)">OSS</div>
+            <div class="tl">Full source transparency</div>
+          </div>
+        </div>
+      </div>
+      <div class="trust-banner">
+        <div class="tb-icon">🔐</div>
+        <div class="tb-text">
+          <strong>Your data has immense value — to you.</strong><br>
+          UrlTrack collects detailed visitor fingerprints, identity graphs, and campaign analytics.
+          Every bit of that data stays on your infrastructure. We don't see it, we can't sell it,
+          and we don't build profiles on your users. The tool is powerful. The data is yours.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Open source ===== -->
+  <section id="oss" style="padding-bottom:40px;">
+    <div class="section-inner">
+      <div class="section-label">Open source</div>
+      <h2 class="section-title">MIT. Built in the open.</h2>
+      <p class="section-sub">
+        Every component is public on GitHub. Read the source, send a patch,
+        fork it. Transparency is the whole point of an identity tool.
+      </p>
+      <div class="oss-grid">
+        <a href="https://github.com/MN-company/UrlTrack" class="oss-card" target="_blank">
+          <div class="top">
+            <span class="name">UrlTrack</span>
+            <span class="stars">⌨️ 6 languages</span>
+          </div>
+          <div class="desc">Monolith — campaign tracking, fingerprint identity graph, threat scoring dashboard, and node-based workflow editor.</div>
+        </a>
+        <a href="https://github.com/MN-company/UrlTrack/tree/codex/thumbmark-identity-graph" class="oss-card" target="_blank">
+          <div class="top">
+            <span class="name">Thumbmark</span>
+            <span class="stars">🧬 15+ signals</span>
+          </div>
+          <div class="desc">Client-side fingerprinting engine — canvas, WebGL, audio, client rects, and WebRTC signal extraction.</div>
+        </a>
+        <a href="https://github.com/MN-company/UrlTrack/tree/codex/thumbmark-identity-graph" class="oss-card" target="_blank">
+          <div class="top">
+            <span class="name">UrlTrack SDK</span>
+            <span class="stars">📦 embeddable</span>
+          </div>
+          <div class="desc">JavaScript snippet for embedding fingerprint tracking and gate UI into any webpage.</div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Roadmap ===== -->
+  <section id="roadmap" style="border-top:1px solid var(--border);">
+    <div class="section-inner">
+      <div class="section-label">Roadmap</div>
+      <h2 class="section-title">What's coming next.</h2>
+      <p class="section-sub">UrlTrack is actively developed. Here's what's on the horizon for Q3–Q4 2026.</p>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:32px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px">
+          <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:4px">Q3 2026</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+            <div style="display:flex;gap:10px;align-items:start"><span style="color:var(--green);font-size:14px;margin-top:1px">●</span><div><div style="font-size:14px;font-weight:500">Cloud platform</div><div style="font-size:12px;color:var(--muted)">Managed hosting with automatic scaling, team accounts, and zero-config SSL.</div></div></div>
+            <div style="display:flex;gap:10px;align-items:start"><span style="color:var(--accent);font-size:14px;margin-top:1px">●</span><div><div style="font-size:14px;font-weight:500">Teams & RBAC</div><div style="font-size:12px;color:var(--muted)">Multi-user workspaces with role-based access control per campaign and project.</div></div></div>
+            <div style="display:flex;gap:10px;align-items:start"><span style="color:var(--purple);font-size:14px;margin-top:1px">●</span><div><div style="font-size:14px;font-weight:500">Public API</div><div style="font-size:12px;color:var(--muted)">REST API for link creation, event ingestion, and identity graph queries.</div></div></div>
+          </div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px">
+          <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--green);margin-bottom:4px">Q4 2026</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+            <div style="display:flex;gap:10px;align-items:start"><span style="color:var(--green);font-size:14px;margin-top:1px">●</span><div><div style="font-size:14px;font-weight:500">Webhook engine</div><div style="font-size:12px;color:var(--muted)">Real-time event webhooks for visit, intercept, match, and gate triggers.</div></div></div>
+            <div style="display:flex;gap:10px;align-items:start"><span style="color:var(--accent);font-size:14px;margin-top:1px">●</span><div><div style="font-size:14px;font-weight:500">Plugin system</div><div style="font-size:12px;color:var(--muted)">Custom node types and gates via community-contributed plugins.</div></div></div>
+            <div style="display:flex;gap:10px;align-items:start"><span style="color:var(--purple);font-size:14px;margin-top:1px">●</span><div><div style="font-size:14px;font-weight:500">Mobile SDK</div><div style="font-size:12px;color:var(--muted)">Native iOS and Android SDKs for in-app fingerprinting and deferred deep linking.</div></div></div>
+          </div>
+        </div>
+        <div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius);padding:24px;display:flex;flex-direction:column;justify-content:center;text-align:center">
+          <div style="font-size:28px;margin-bottom:8px">💡</div>
+          <div style="font-size:14px;font-weight:500;margin-bottom:4px">Have an idea?</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Roadmap is community-driven.</div>
+          <a href="https://github.com/MN-company/UrlTrack/discussions" class="btn btn-sm btn-outline" style="display:inline-flex;justify-content:center" target="_blank">Open a discussion →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Footer ===== -->
+  <footer>
+    <div class="footer-inner">
+      <div>
+        <div style="font-weight:600;font-size:15px;margin-bottom:6px;">
+          <svg width="16" height="16" viewBox="0 0 28 28" fill="none" style="vertical-align:-3px;margin-right:6px;">
+            <rect x="2" y="2" width="24" height="24" rx="6" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            <path d="M9 14h10M14 9v10" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          UrlTrack
+        </div>
+        <div style="font-size:12px;color:var(--subtle);max-width:220px;">
+          Open-source campaign intelligence and visitor tracking platform.
+        </div>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="#features">Features</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#" onclick="openComingSoon();return false">Cloud app</a>
+        <a href="https://github.com/MN-company/UrlTrack/releases">Changelog</a>
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="https://github.com/MN-company/UrlTrack" target="_blank">GitHub</a>
+        <a href="https://github.com/MN-company/UrlTrack/issues" target="_blank">Issues</a>
+        <a href="https://github.com/MN-company/UrlTrack/discussions" target="_blank">Discussions</a>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <a href="#">MIT License</a>
+        <a href="#">Privacy</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>MIT © 2026 UrlTrack</span>
+      <span>Track visitors, not just clicks.</span>
+    </div>
+  </footer>
+
+  <!-- ===== Coming soon modal ===== -->
+  <div class="coming-overlay" id="comingOverlay">
+    <div class="coming-modal">
+      <div style="text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">🚀</div>
+        <h2 style="font-family:var(--font-display);font-size:22px;font-weight:650;letter-spacing:-.4px;margin-bottom:6px">Cloud version coming soon</h2>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;line-height:1.5">
+          We're building a managed cloud platform with team accounts,<br>
+          automatic backups, and zero-config SSL.<br>
+          <span style="color:var(--fg);font-weight:500">Meanwhile, self-host in two commands →</span>
+        </p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+          <a href="https://github.com/MN-company/UrlTrack" class="btn btn-accent" target="_blank">View on GitHub</a>
+          <button class="btn btn-outline" onclick="closeComingSoon()">Close</button>
+        </div>
+        <div style="margin-top:16px;font-size:12px;color:var(--subtle)">
+          Watch the repo on GitHub to get notified when cloud launches
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .coming-overlay{display:none;position:fixed;inset:0;z-index:300;background:oklch(0% 0 0/0.6);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:24px}
+    .coming-overlay.open{display:flex}
+    .coming-modal{background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;width:100%;max-width:440px;padding:36px 32px;animation:fadeUp .35s cubic-bezier(.22,1,.36,1) both}
+  </style>
+
+  <!-- ===== Track Me overlay ===== -->
+  <div class="track-overlay" id="trackOverlay">
+    <div class="track-modal">
+      <div class="top">
+        <h2><span style="opacity:.7;">🕵️</span> Your fingerprint</h2>
+        <button class="close-btn" onclick="closeTrackDemo()">✕</button>
+      </div>
+      <div id="trackContent">
+        <div style="text-align:center;padding:40px 0;color:var(--muted);font-size:14px;">
+          <div style="font-size:32px;margin-bottom:12px;">⏳</div>
+          Scanning browser signals…
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .track-overlay{display:none;position:fixed;inset:0;z-index:200;background:oklch(0% 0 0/0.6);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:24px}
+    .track-overlay.open{display:flex}
+    .track-modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;width:100%;max-width:520px;max-height:80vh;overflow-y:auto;padding:28px;animation:fadeUp .35s cubic-bezier(.22,1,.36,1) both}
+    .track-modal .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+    .track-modal .top h2{font-family:var(--font-display);font-size:20px;font-weight:650;letter-spacing:-0.4px}
+    .track-modal .close-btn{width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+    .track-modal .close-btn:hover{border-color:var(--accent);color:var(--fg)}
+    .track-modal .section-title-sm{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--subtle);margin:16px 0 10px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+    .track-modal .data-row{display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-bottom:1px solid oklch(22% 0.03 260/0.35)}
+    .track-modal .data-row:last-child{border-bottom:none}
+    .track-modal .data-row .label{color:var(--subtle)}
+    .track-modal .data-row .value{color:var(--fg);font-weight:500;font-family:var(--font-mono);font-size:11px;text-align:right;max-width:60%;word-break:break-all}
+    .track-modal .sig-score{display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg);border-radius:8px;margin:14px 0}
+    .track-modal .sig-score .num{font-family:var(--font-display);font-size:32px;font-weight:700;letter-spacing:-1px;line-height:1}
+    .track-modal .sig-score .num.low{color:var(--green)}
+    .track-modal .sig-score .num.mid{color:var(--amber)}
+    .track-modal .sig-score .num.high{color:var(--red)}
+    .track-modal .sig-score .meta{font-size:12px;color:var(--muted)}
+    .track-modal .sig-score .meta strong{color:var(--fg)}
+  </style>
+
+  <script>
+    const glow=document.getElementById('cursorGlow');
+    document.addEventListener('mousemove',e=>{glow.style.left=e.clientX+'px';glow.style.top=e.clientY+'px'});
+
+    (function initDemo(){
+      const ua=navigator.userAgent;
+      let browser=ua.includes('Chrome')?'Chrome':ua.includes('Firefox')?'Firefox':ua.includes('Safari')&&!ua.includes('Chrome')?'Safari':ua.includes('Edge')?'Edge':'Unknown';
+      const os=ua.includes('Mac')?'macOS':ua.includes('Win')?'Windows':ua.includes('Linux')?'Linux':ua.includes('Android')?'Android':ua.includes('iPhone')||ua.includes('iPad')?'iOS':'Unknown';
+      document.getElementById('demoBrowser').textContent=browser+' / '+os;
+      document.getElementById('demoScreen').textContent=screen.width+'×'+screen.height+' @'+screen.colorDepth+'bpp';
+      document.getElementById('demoTz').textContent=Intl.DateTimeFormat().resolvedOptions().timeZone;
+    })();
+
+    function openTrackDemo(){
+      const overlay=document.getElementById('trackOverlay');
+      const content=document.getElementById('trackContent');
+      overlay.classList.add('open');
+      document.body.style.overflow='hidden';
+      setTimeout(()=>{const fp=collectFingerprint();renderFingerprint(fp,content);updateDemoPreview(fp)},600);
+    }
+    function closeTrackDemo(){document.getElementById('trackOverlay').classList.remove('open');document.body.style.overflow=''}
+    document.getElementById('trackOverlay').addEventListener('click',function(e){if(e.target===this)closeTrackDemo()});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape')closeTrackDemo()});
+
+    function collectFingerprint(){
+      const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;
+      const ctx=canvas.getContext('2d');ctx.textBaseline='top';ctx.font='14px Arial';ctx.fillStyle='#f60';ctx.fillRect(0,0,50,50);
+      ctx.fillStyle='#069';ctx.fillText('UrlTrack™ fingerprint',2,15);ctx.fillStyle='rgba(102,204,0,0.7)';ctx.font='18px Times New Roman';ctx.fillText('🕵️',20,120);
+      const canvasHash=simpleHash(canvas.toDataURL());
+      const gl=document.createElement('canvas').getContext('webgl');let webglVendor='Unavailable',webglRenderer='Unavailable';
+      if(gl){const ext=gl.getExtension('WEBGL_debug_renderer_info');if(ext){webglVendor=gl.getParameter(ext.UNMASKED_VENDOR_WEBGL);webglRenderer=gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)}gl.getExtension('WEBGL_lose_context')?.loseContext()}
+      const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+      let audioFP='Unavailable';
+      if(AudioContextClass){try{const audioCtx=new AudioContextClass();audioFP=audioCtx.sampleRate+'-'+audioCtx.state;audioCtx.close()}catch(_){}}
+      const rects=[];const el=document.createElement('div');el.style.cssText='position:fixed;left:1.234px;top:5.678px;width:100px;height:50px;';document.body.appendChild(el);const r=el.getBoundingClientRect();rects.push(r.left.toFixed(3)+','+r.top.toFixed(3)+','+r.width+','+r.height);document.body.removeChild(el);
+      const fonts=[];const testStr='abcdefghijklmnopqrstuvwxyz0123456789';const testFonts=['monospace','serif','sans-serif','Arial','Helvetica','Times New Roman','Courier New','Georgia','Verdana','Impact','Comic Sans MS'];const c2=document.createElement('canvas');c2.width=200;c2.height=40;const ctx2=c2.getContext('2d');const baseW=ctx2.measureText(testStr).width;testFonts.forEach(f=>{ctx2.font='12px '+f+', sans-serif';if(Math.abs(ctx2.measureText(testStr).width-baseW)>0.5)fonts.push(f)});
+      const id=canvasHash.slice(0,8)+'-'+simpleHash(webglRenderer+audioFP).slice(0,6);
+      return{id:'#'+id,canvasHash:'#'+canvasHash,webglVendor,webglRenderer,audioFP,rects:rects[0]||'n/a',fonts,platform:navigator.platform||'unknown',userAgent:navigator.userAgent,screen:screen.width+'×'+screen.height+' @'+screen.colorDepth+'bpp',timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,langs:navigator.languages?navigator.languages.join(', '):navigator.language,touch:'ontouchstart'in window?'Yes':'No',darkMode:window.matchMedia('(prefers-color-scheme:dark)').matches?'Yes':'No',dnt:navigator.doNotTrack||'Unspecified',conn:navigator.connection?navigator.connection.effectiveType+' ('+navigator.connection.downlink+'Mbps)':'unknown',coreCount:navigator.hardwareConcurrency||'unknown',mem:navigator.deviceMemory?navigator.deviceMemory+'GB':'unknown'}
+    }
+    function simpleHash(str){let hash=0;for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);hash=((hash<<5)-hash)+c;hash|=0}return Math.abs(hash).toString(16).toUpperCase()}
+
+    function renderFingerprint(fp,c){
+      const trustPercent=Math.min(95,30+(fp.fonts.length*5)+(fp.canvasHash.length*2));
+      const trustLabel=trustPercent>70?'High':trustPercent>40?'Medium':'Low';
+      const trustClass=trustPercent>70?'low':trustPercent>40?'mid':'high';
+      c.innerHTML=`<div class="sig-score"><div class="num ${trustClass}">${trustPercent}%</div><div class="meta">Signature confidence<br><strong>${fp.fonts.length}</strong> fonts detected · <strong>${trustLabel}</strong> uniqueness</div></div><div class="section-title-sm">Identity</div><div class="data-row"><span class="label">Visitor ID</span><span class="value" style="color:var(--accent)">${fp.id}</span></div><div class="data-row"><span class="label">Canvas hash</span><span class="value" style="color:var(--blue)">${fp.canvasHash}</span></div><div class="data-row"><span class="label">WebGL vendor</span><span class="value">${fp.webglVendor}</span></div><div class="data-row"><span class="label">WebGL renderer</span><span class="value">${fp.webglRenderer}</span></div><div class="data-row"><span class="label">Audio FP</span><span class="value">${fp.audioFP}</span></div><div class="data-row"><span class="label">Client rects</span><span class="value" style="font-size:10px">${fp.rects}</span></div><div class="data-row"><span class="label">Fonts detected</span><span class="value">${fp.fonts.length} (${fp.fonts.slice(0,5).join(', ')}${fp.fonts.length>5?', …':''})</span></div><div class="section-title-sm">Device</div><div class="data-row"><span class="label">Platform</span><span class="value">${fp.platform}</span></div><div class="data-row"><span class="label">Screen</span><span class="value">${fp.screen}</span></div><div class="data-row"><span class="label">Timezone</span><span class="value">${fp.timezone}</span></div><div class="data-row"><span class="label">Languages</span><span class="value">${fp.langs}</span></div><div class="data-row"><span class="label">Touch</span><span class="value">${fp.touch}</span></div><div class="data-row"><span class="label">Dark mode</span><span class="value">${fp.darkMode}</span></div><div class="data-row"><span class="label">DNT</span><span class="value">${fp.dnt}</span></div><div class="data-row"><span class="label">Connection</span><span class="value">${fp.conn}</span></div><div class="data-row"><span class="label">CPU cores</span><span class="value">${fp.coreCount}</span></div><div class="data-row"><span class="label">Memory</span><span class="value">${fp.mem}</span></div>`;
+    }
+
+    function updateDemoPreview(fp){
+      document.getElementById('demoId').innerHTML=fp.id;
+      document.getElementById('demoIp').innerHTML='<span style="opacity:.6;font-size:11px">WebRTC restricted by browser</span>';
+      const trustPercent=Math.min(95,30+(fp.fonts.length*5)+(fp.canvasHash.length*2));
+      const trustLabel=trustPercent>70?'High':trustPercent>40?'Medium':'Low';
+      const trustClass=trustPercent>70?'trust-high':trustPercent>40?'trust-mid':'trust-low';
+      document.getElementById('demoTrust').className='trust-badge '+trustClass;
+      document.getElementById('demoTrust').textContent=trustLabel+' ('+trustPercent+'%)';
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(a=>{a.addEventListener('click',function(e){const id=this.getAttribute('href').slice(1);const el=document.getElementById(id);if(el){e.preventDefault();el.scrollIntoView({behavior:'smooth',block:'start'})}})});
+
+    function openComingSoon(){document.getElementById('comingOverlay').classList.add('open');document.body.style.overflow='hidden'}
+    function closeComingSoon(){document.getElementById('comingOverlay').classList.remove('open');document.body.style.overflow=''}
+    document.getElementById('comingOverlay').addEventListener('click',function(e){if(e.target===this)closeComingSoon()});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeComingSoon();closeTrackDemo()}});
+
+    function switchInstall(mode){
+      const docker=document.getElementById('installDocker');
+      const source=document.getElementById('installSource');
+      const tabD=document.getElementById('installTabDocker');
+      const tabS=document.getElementById('installTabSource');
+      if(mode==='docker'){
+        docker.style.display='block';source.style.display='none';
+        tabD.className='btn btn-sm btn-accent';tabS.className='btn btn-sm btn-outline';
+      }else{
+        docker.style.display='none';source.style.display='block';
+        tabD.className='btn btn-sm btn-outline';tabS.className='btn btn-sm btn-accent';
+      }
+    }
+  </script>
+</body>
+</html>
