@@ -1,45 +1,59 @@
 # UrlTrack
 
-**Turn every link into a fast, protected intelligence layer.**
+**Self-hosted link intelligence for analytics, routing, and traffic quality.**
 
-UrlTrack is a self-hosted link intelligence platform built for teams that want
-more control than a traditional shortener can offer. Create protected links,
-route trusted visitors, filter unwanted traffic, connect identities across
-campaigns, and turn every interaction into useful operational context.
+UrlTrack turns ordinary links into a controlled intelligence layer. It combines
+short links, access gates, visitor analytics, bot and VPN filtering, lead
+history, exports, and optional AI analysis in one deployable application.
 
-Everything runs on infrastructure you control, with no artificial limits on
-campaigns and no dependency on a third-party analytics dashboard.
+The project was built around a practical problem: most shorteners are useful
+for click counts, but weak when a team needs to understand traffic quality,
+segment visitors, protect destinations, and keep the data on infrastructure it
+controls.
 
 **[Open the interactive website](https://mn-company.github.io/UrlTrack/)**
 
-## Highlights
+## What it solves
 
-- **GhostRedirect** routes rejected traffic to a safe URL without revealing the
-  protected destination
-- **GateFlow** combines password, CAPTCHA, email, consent, country, VPN, and
-  scheduling rules
-- **SignalGraph** connects fingerprints, links, devices, and known emails
-  across campaigns
-- **LeadPulse** surfaces repeat visitors and builds a reviewable activity
-  history
-- **RiskLens** scores traffic and highlights visits that deserve attention
-- **AI Analyst** explores campaign data using natural-language, scoped queries
-- **LiveRelay** delivers events through Telegram, email, and signed webhooks
-- **TeamSpaces** keeps campaigns separated with invitations and role-based
-  permissions
-- **DataPort** exports campaign intelligence in CSV, JSON, and PDF
+- **Traffic quality**: identify bots, scanners, VPN/proxy traffic, repeat
+  visitors, and suspicious sessions before treating a click as useful signal.
+- **Controlled routing**: send visitors through password, CAPTCHA, email,
+  consent, country, schedule, and device checks before redirecting.
+- **Campaign intelligence**: connect links, visits, fingerprints, emails, and
+  lead activity into a reviewable timeline.
+- **Operational ownership**: run the application yourself instead of depending
+  on a hosted analytics dashboard or opaque third-party shortener.
+- **Exportable evidence**: move campaign data into CSV, JSON, PDF, webhooks,
+  email workflows, or Telegram alerts.
 
-## Speed without blind spots
+## Core capabilities
 
-**FastPath** keeps the public redirect flow lean while enrichment runs in the
-background. Visitors move through the required checks without waiting for
+- Short-link creation with destination protection and fallback redirects
+- Visual routing flows for gates, conditions, splits, and notifications
+- Visitor fingerprinting based on browser and device signals, with ThumbmarkJS
+  used as the foundation for client-side fingerprint collection
+- Bot, scanner, VPN, proxy, and hosting-provider checks
+- Workspace separation, invitations, roles, TOTP, and passkey support
+- Lead and visit timelines with device profiles and campaign-level analytics
+- Optional Gemini-powered AI Analyst for scoped natural-language exploration of
+  campaign data
+- CSV, JSON, and PDF exports
+- Telegram, SMTP email, and signed webhook integrations
+- Python/Flask backend with SQLAlchemy, Alembic migrations, server-rendered UI,
+  Docker support, and optional Supabase integration
+
+## Architecture
+
+The public redirect path is kept lightweight while slower enrichment work runs
+in the background. Visitors move through the required checks without waiting for
 scoring, notifications, or external integrations to finish.
 
-- fast server-rendered pages with minimal browser overhead
-- asynchronous enrichment, scoring, and notifications
-- local caching for frequently accessed intelligence
-- external services kept outside the critical redirect path
-- one-command startup with Python or Docker
+- Server-rendered Flask pages with minimal browser overhead
+- SQLAlchemy models and Alembic migrations
+- Background enrichment for risk scoring, alerts, and webhooks
+- Local sessions by default, with optional Supabase-backed authentication
+- Docker and script-based setup paths
+- Optional AI layer kept separate from core redirect and analytics logic
 
 ## How it works
 
@@ -54,16 +68,16 @@ flowchart LR
     G --> H["Scoring and notifications"]
 ```
 
-GhostRedirect keeps the protected destination out of the rejected flow.
-Automated scanners and visitors that do not pass GateFlow can be stopped or
-routed to a harmless fallback URL, while eligible traffic continues through
-FastPath.
+Rejected traffic can be stopped or routed to a harmless fallback URL while
+eligible traffic continues to the protected destination. This keeps the
+destination out of the rejected flow and makes the link useful for legitimate
+analytics, campaign safety, and controlled access.
 
-### GhostRedirect comparison
+### Destination protection comparison
 
-| GhostRedirect | Typical URL inspection tool |
+| UrlTrack protected flow | Typical URL inspection tool |
 | --- | --- |
-| ![GhostRedirect keeps the protected destination private](our.png) | ![Comparison tools expose the final destination](others.png) |
+| ![UrlTrack keeps the protected destination private in the rejected flow](our.png) | ![Comparison tools expose the final destination](others.png) |
 
 The exact result depends on the client and configuration; this is a defensive
 layer rather than a guarantee against every crawler.
@@ -77,10 +91,10 @@ links from one operational view.
 
 ![UrlTrack Campaign Command Center](demo-dashboard.png)
 
-### GateFlow Studio
+### Routing flow builder
 
 Build visual routing flows with triggers, conditions, access gates, splits,
-GhostRedirect destinations, and real-time notifications.
+fallback destinations, and real-time notifications.
 
 ![UrlTrack GateFlow Studio](demo-flow-studio.png)
 
@@ -158,19 +172,19 @@ DATABASE_URL=sqlite:///data/urltrack.db
 Further users join by invitation. Workspace roles are `viewer`, `analyst`,
 `editor`, `admin`, and `owner`.
 
-## Connected by design
+## Integrations
 
 UrlTrack works as a standalone application, but its most useful integrations
 are built directly into the normal campaign workflow.
 
-### Supabase Core
+### Supabase
 
 Connect Supabase to add managed authentication while preserving UrlTrack's
 local sessions, workspaces, roles, passkeys, and security settings. Teams can
 start with local accounts and introduce Supabase when the installation grows,
 without changing how campaigns and analytics are organized.
 
-### Provider-ready AI Analyst
+### AI Analyst
 
 The AI Analyst turns campaign data into a searchable operational view. It can
 reason over visits, links, fingerprints, IP addresses, emails, and leads using
@@ -181,7 +195,7 @@ extended to different model providers. Gemini support is included out of the
 box, and AI remains completely optional: links and analytics continue to work
 when no model is configured.
 
-### LiveRelay notifications
+### Notifications and webhooks
 
 ```mermaid
 flowchart LR
