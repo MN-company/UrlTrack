@@ -1,5 +1,12 @@
 # UrlTrack
 
+[![GitHub Pages](https://img.shields.io/badge/demo-live-2ea44f?style=for-the-badge&logo=githubpages&logoColor=white)](https://mn-company.github.io/UrlTrack/)
+[![Python](https://img.shields.io/badge/Python-Flask-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-ready-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
+[![Gemini](https://img.shields.io/badge/Gemini-AI%20Analyst-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+[![Docker](https://img.shields.io/badge/Docker-supported-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![License](https://img.shields.io/github/license/MN-company/UrlTrack?style=for-the-badge)](LICENSE)
+
 **Self-hosted link intelligence for analytics, routing, and traffic quality.**
 
 UrlTrack turns ordinary links into a controlled intelligence layer. It combines
